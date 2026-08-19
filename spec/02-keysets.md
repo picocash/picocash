@@ -8,7 +8,15 @@ Powers of 2 in **USDC.e base units** (6 decimals): `1, 2, 4, …, 2^30` µUSDC.e
 
 ## Unit
 
-The unit string `"usdc.e-base"` denotes USDC.e base units. The dedicated **credits** instrument (zero-backed, service-redeemable only, never meltable) uses a distinct unit string (`"credit"`) and its own keyset, so backed money and promo credits can never be confused.
+**The unit is the token contract.** A backed unit is the canonical string
+
+```
+tip20:<chain_id>:<token_address>     e.g. tip20:42431:0x20c0000000000000000000000000000000000000
+```
+
+with the address in lowercase hex. It MUST resolve to a deployed TIP-20 contract on that chain, and it MUST equal the mint's vault binding: a mint MUST verify at startup that `vault.token()` is exactly the unit's token address and refuse to run otherwise. Amounts are integers in that token's base units (TIP-20 stablecoins use 6 decimals); the display symbol comes from the token contract's `symbol()`, never from the protocol. A pathUSD mint and a pyUSD mint are therefore different units, different keysets, and different vaults — one vault per currency, so the solvency check stays one number against one number.
+
+The dedicated **credits** instrument (zero-backed, service-redeemable only, never meltable) is deliberately NOT a TIP-20 unit: it uses the `credit:` namespace (e.g. `credit:a9n9.net`) and its own keyset, so backed money and promo credits can never be confused — structurally, not by convention.
 
 ## Key derivation
 

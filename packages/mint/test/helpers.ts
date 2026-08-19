@@ -10,6 +10,7 @@ import {
 } from '@picocash/crypto';
 import type { Hono } from 'hono';
 import { buildApp } from '../src/app.js';
+import { tip20Unit } from '../src/config.js';
 import type { MintConfig } from '../src/config.js';
 import { createPgliteDb, type Db } from '../src/db.js';
 import { migrate } from '../src/db.js';
@@ -33,10 +34,11 @@ export async function makeMint(): Promise<TestMint> {
   await migrate(db);
   const config: MintConfig = {
     name: 'test mint',
-    unit: 'usdc.e-base',
+    unit: tip20Unit(42431, '0x20c0000000000000000000000000000000000000'),
     seed: sha256(utf8ToBytes('picocash-test-seed')),
     port: 0,
     databaseUrl: undefined,
+    vault: 'fake',
     fakeVault: true,
     maxMintAmount: 100_000_000,
     quoteTtlSeconds: 900,

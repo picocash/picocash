@@ -4,6 +4,8 @@
 
 Base path `/v1`, JSON bodies. All amounts are integer base units. Byte strings (secrets, points, `Y` values) are lowercase hex; points are 33-byte SEC1 compressed. Secrets are **raw bytes**, hex-encoded on the wire (a structured `PC-BIND` secret is the hex of its canonical-JSON UTF-8 bytes).
 
+The `unit` is the canonical TIP-20 identifier `tip20:<chain_id>:<token_address>` (spec/02): the unit *is* the token contract backing it. A mint MUST verify at startup that the token is a deployed TIP-20 and that its vault's `token()` equals the unit's address, and MUST refuse to serve otherwise.
+
 ## Errors
 
 Every error is:
@@ -42,17 +44,17 @@ Mint metadata: `name`, `version`, `unit`, `keysets` (ids + state), `limits` (`ma
 ### `GET /v1/keys` · `GET /v1/keys/{keyset_id}`
 
 ```jsonc
-{ "keysets": [ { "id": "00a1…", "unit": "usdc.e-base", "state": "active", "keys": { "1": "02…", "2": "03…", … } } ] }
+{ "keysets": [ { "id": "00a1…", "unit": "tip20:42431:0x20c0...0000", "state": "active", "keys": { "1": "02…", "2": "03…", … } } ] }
 ```
 
 ### `POST /v1/mint/quote` → deposit instructions
 
-Request `{ "amount": 1000000, "unit": "usdc.e-base" }`. Response:
+Request `{ "amount": 1000000, "unit": "tip20:42431:0x20c0...0000" }`. Response:
 
 ```jsonc
 {
   "quote_id": "<32 bytes, hex>",        // doubles as the bytes32 deposit memo
-  "amount": 1000000, "unit": "usdc.e-base",
+  "amount": 1000000, "unit": "tip20:42431:0x20c0...0000",
   "state": "UNPAID",                    // UNPAID → PAID → ISSUED
   "deposit": {
     "method": "tempo",                  // or "fake-vault" in dev
@@ -100,7 +102,7 @@ Request `{ "Ys": ["02…", …] }` — `Y = hash_to_curve(secret)` values, never
 
 Melt burns proofs and pays out USDC.e from the vault.
 
-`POST /v1/melt/quote` request `{ "amount": 500000, "unit": "usdc.e-base", "to": "0x…" }` → response `{ "melt_id": "<32 bytes hex>", "amount", "unit", "to", "state": "UNPAID", "expires_at" }`. The melt id is 32 bytes and is passed on-chain as the vault's `bytes32 meltId` — the vault enforces **one payout per melt id, forever**.
+`POST /v1/melt/quote` request `{ "amount": 500000, "unit": "tip20:42431:0x20c0...0000", "to": "0x…" }` → response `{ "melt_id": "<32 bytes hex>", "amount", "unit", "to", "state": "UNPAID", "expires_at" }`. The melt id is 32 bytes and is passed on-chain as the vault's `bytes32 meltId` — the vault enforces **one payout per melt id, forever**.
 
 `POST /v1/melt` request `{ "melt_id": "…", "inputs": [Proof…] }`. Rules:
 

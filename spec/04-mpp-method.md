@@ -32,7 +32,7 @@ Issued by the service (in the MPP challenge envelope, `method: "picocash"`):
   "challenge_id": "chal_9f2c…",           // unique, single-use
   "nonce": "b7e2…",                       // 32-byte hex, binds the credential
   "amount": 50000,                        // integer base units
-  "unit": "usdc.e-base",
+  "unit": "tip20:42431:0x20c0...0000",
   "mints": [                              // allowlist the service will accept
     { "url": "https://mint.picocash.app", "keyset_ids": ["…"] }
   ],

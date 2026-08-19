@@ -29,17 +29,31 @@ export interface MintConfig {
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 
+/**
+ * Canonical unit identifier: the unit IS the TIP-20 token contract it is
+ * backed by, scoped by chain. Keyset keys derive from this string, so keys
+ * for one token/chain can never be confused with another's (spec/02).
+ */
+export function tip20Unit(chainId: number, tokenAddress: string): string {
+  return `tip20:${chainId}:${tokenAddress.toLowerCase()}`;
+}
+
+function parseTokenBinding(env: NodeJS.ProcessEnv): { chainId: number; tokenAddress: `0x${string}` } {
+  const tokenAddress = env.PICOCASH_TEMPO_TOKEN ?? '0x20c0000000000000000000000000000000000000'; // pathUSD on Moderato
+  if (!ADDRESS_RE.test(tokenAddress)) throw new Error('PICOCASH_TEMPO_TOKEN must be a 0x… address');
+  return { chainId: Number(env.PICOCASH_TEMPO_CHAIN_ID ?? 42431), tokenAddress: tokenAddress as `0x${string}` };
+}
+
 function loadTempoConfig(env: NodeJS.ProcessEnv): TempoConfig {
   const depositAddress = env.PICOCASH_DEPOSIT_ADDRESS;
   if (!depositAddress || !ADDRESS_RE.test(depositAddress)) {
     throw new Error('PICOCASH_DEPOSIT_ADDRESS (0x…, 20 bytes) is required for PICOCASH_VAULT=tempo');
   }
-  const tokenAddress = env.PICOCASH_TEMPO_TOKEN ?? '0x20c0000000000000000000000000000000000000'; // pathUSD on Moderato
-  if (!ADDRESS_RE.test(tokenAddress)) throw new Error('PICOCASH_TEMPO_TOKEN must be a 0x… address');
+  const { chainId, tokenAddress } = parseTokenBinding(env);
   return {
     rpcUrl: env.PICOCASH_TEMPO_RPC ?? 'https://rpc.moderato.tempo.xyz',
-    chainId: Number(env.PICOCASH_TEMPO_CHAIN_ID ?? 42431),
-    tokenAddress: tokenAddress as `0x${string}`,
+    chainId,
+    tokenAddress,
     depositAddress: depositAddress as `0x${string}`,
     operatorKey: /^0x[0-9a-fA-F]{64}$/.test(env.PICOCASH_OPERATOR_KEY ?? '')
       ? (env.PICOCASH_OPERATOR_KEY as `0x${string}`)
@@ -64,9 +78,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MintConfig {
   } else {
     throw new Error('PICOCASH_MINT_SEED is required when not running against the fake vault');
   }
+  const binding = parseTokenBinding(env);
   return {
     name: env.PICOCASH_MINT_NAME ?? 'picocash dev mint',
-    unit: 'usdc.e-base',
+    unit: tip20Unit(binding.chainId, binding.tokenAddress),
     seed,
     port: Number(env.PORT ?? 3338),
     databaseUrl: env.DATABASE_URL,

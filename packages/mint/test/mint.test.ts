@@ -7,7 +7,8 @@ describe('info and keys', () => {
     const mint = await makeMint();
     const info = await mint.get('/v1/info');
     expect(info.status).toBe(200);
-    expect(info.body.unit).toBe('usdc.e-base');
+    expect(info.body.unit).toBe(mint.config.unit);
+    expect(info.body.unit).toMatch(/^tip20:42431:0x[0-9a-f]{40}$/); // the unit IS the token contract
     expect(info.body.vault).toBe('fake');
 
     const keys = await mint.get('/v1/keys');
@@ -30,7 +31,7 @@ describe('mint flow', () => {
   it('quote → deposit → mint, with client-verifiable DLEQ on every signature', async () => {
     const mint = await makeMint();
     const amount = 1_000_000; // $1
-    const quote = await mint.post('/v1/mint/quote', { amount, unit: 'usdc.e-base' });
+    const quote = await mint.post('/v1/mint/quote', { amount, unit: mint.config.unit });
     expect(quote.status).toBe(200);
     expect(quote.body.state).toBe('UNPAID');
     expect(quote.body.quote_id).toMatch(/^[0-9a-f]{64}$/); // 32 bytes: doubles as the bytes32 memo
@@ -71,7 +72,7 @@ describe('mint flow', () => {
   it('replays identical mint requests idempotently, rejects different outputs', async () => {
     const mint = await makeMint();
     const amount = 7;
-    const quote = await mint.post('/v1/mint/quote', { amount, unit: 'usdc.e-base' });
+    const quote = await mint.post('/v1/mint/quote', { amount, unit: mint.config.unit });
     await mint.post('/dev/deposit', { quote_id: quote.body.quote_id, amount });
     const { outputs } = makeOutputs(mint.keyset.id, decompose(amount));
 
@@ -89,10 +90,10 @@ describe('mint flow', () => {
   it('enforces sum, denomination, limits, and B_ single-use', async () => {
     const mint = await makeMint();
 
-    const overLimit = await mint.post('/v1/mint/quote', { amount: mint.config.maxMintAmount + 1, unit: 'usdc.e-base' });
+    const overLimit = await mint.post('/v1/mint/quote', { amount: mint.config.maxMintAmount + 1, unit: mint.config.unit });
     expect(overLimit.body.error.code).toBe('AMOUNT_LIMIT');
 
-    const quote = await mint.post('/v1/mint/quote', { amount: 8, unit: 'usdc.e-base' });
+    const quote = await mint.post('/v1/mint/quote', { amount: 8, unit: mint.config.unit });
     await mint.post('/dev/deposit', { quote_id: quote.body.quote_id, amount: 8 });
 
     const wrongSum = makeOutputs(mint.keyset.id, [4, 2]);
@@ -107,7 +108,7 @@ describe('mint flow', () => {
     // issue the quote, then try to reuse one of its B_ under a new quote
     const good = makeOutputs(mint.keyset.id, [8]);
     await mint.post('/v1/mint', { quote_id: quote.body.quote_id, outputs: good.outputs });
-    const quote2 = await mint.post('/v1/mint/quote', { amount: 8, unit: 'usdc.e-base' });
+    const quote2 = await mint.post('/v1/mint/quote', { amount: 8, unit: mint.config.unit });
     await mint.post('/dev/deposit', { quote_id: quote2.body.quote_id, amount: 8 });
     const reused = await mint.post('/v1/mint', { quote_id: quote2.body.quote_id, outputs: good.outputs });
     expect(reused.status).toBe(409);
@@ -124,7 +125,7 @@ describe('mint flow', () => {
   it('serves concurrent identical mint requests exactly once', async () => {
     const mint = await makeMint();
     const amount = 16;
-    const quote = await mint.post('/v1/mint/quote', { amount, unit: 'usdc.e-base' });
+    const quote = await mint.post('/v1/mint/quote', { amount, unit: mint.config.unit });
     await mint.post('/dev/deposit', { quote_id: quote.body.quote_id, amount });
     const { outputs } = makeOutputs(mint.keyset.id, decompose(amount));
 

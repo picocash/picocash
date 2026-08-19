@@ -2,6 +2,8 @@
 
 **Status: v0.1-draft, implemented** in [picocash/picocash-contracts](https://github.com/picocash/picocash-contracts) (`PicocashVault.sol`), built after the mint ran against a fake vault so the interface was dictated by a running consumer. Current Tempo **Moderato testnet** deployment: `0x4336A5914BFF9912050c6518fbF46e599336D384` (token pathUSD `0x20c0…0000`, 2-day rotation timelock).
 
+**One vault per currency.** The vault is bound to exactly one TIP-20 token at deployment; `vault.token()` is the on-chain authority for the mint's unit binding (`tip20:<chain_id>:<token_address>`, spec/02), and the mint refuses to start if its configured unit disagrees. A mint supporting multiple currencies runs one vault per unit — solvency stays one number against one number, and a fault in one currency's custody cannot touch another's.
+
 The primary deposit flow needs no vault call at all: a TIP-20 `transferWithMemo(vault, amount, quoteId)` credits the vault and emits the memo event the mint watches (memo is indexed on Tempo's TIP-20). `deposit(amount, mintQuoteId)` exists as an allowance-based fallback. Melt payouts go through `withdraw(to, amount, meltId)` — operator-only, **one payout per meltId enforced on-chain**, and with no pause check anywhere on the path.
 
 Settled design constraints the implementation honors:

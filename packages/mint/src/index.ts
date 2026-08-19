@@ -4,7 +4,7 @@ import { loadConfig } from './config.js';
 import { createPgDb, createPgliteDb, migrate, type Db } from './db.js';
 import { deriveKeyset } from './keyset.js';
 import { FakePayout, TempoPayout, type PayoutExecutor } from './payout.js';
-import { TempoVault } from './vault-tempo.js';
+import { TempoVault, verifyTokenBinding } from './vault-tempo.js';
 import { FakeVault, type DepositOracle } from './vault.js';
 
 export async function main(): Promise<void> {
@@ -26,9 +26,10 @@ export async function main(): Promise<void> {
   let vaultLabel: string;
   if (config.vault === 'tempo') {
     const tempo = config.tempo!;
+    const token = await verifyTokenBinding(tempo);
     oracle = new TempoVault(tempo);
     payout = tempo.operatorKey ? new TempoPayout(tempo) : undefined;
-    vaultLabel = `TEMPO chain ${tempo.chainId}, vault ${tempo.depositAddress}, melt ${payout ? 'on' : 'OFF (no operator key)'}`;
+    vaultLabel = `TEMPO chain ${tempo.chainId}, unit ${config.unit} (${token.symbol}, ${token.decimals} dec), vault ${tempo.depositAddress}, melt ${payout ? 'on' : 'OFF (no operator key)'}`;
   } else {
     fakeVault = new FakeVault();
     oracle = fakeVault;

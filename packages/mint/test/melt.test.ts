@@ -8,7 +8,7 @@ describe('melt', () => {
     const mint = await makeMint();
     const proofs = await mintTokens(mint, 6); // 4 + 2
 
-    const quote = await mint.post('/v1/melt/quote', { amount: 6, unit: 'usdc.e-base', to: PAYOUT_ADDR });
+    const quote = await mint.post('/v1/melt/quote', { amount: 6, unit: mint.config.unit, to: PAYOUT_ADDR });
     expect(quote.status).toBe(200);
     expect(quote.body.melt_id).toMatch(/^[0-9a-f]{64}$/);
     expect(quote.body.state).toBe('UNPAID');
@@ -30,7 +30,7 @@ describe('melt', () => {
   it('replays a PAID melt idempotently, rejects foreign inputs', async () => {
     const mint = await makeMint();
     const proofs = await mintTokens(mint, 2);
-    const quote = await mint.post('/v1/melt/quote', { amount: 2, unit: 'usdc.e-base', to: PAYOUT_ADDR });
+    const quote = await mint.post('/v1/melt/quote', { amount: 2, unit: mint.config.unit, to: PAYOUT_ADDR });
     const first = await mint.post('/v1/melt', { melt_id: quote.body.melt_id, inputs: proofs });
     expect(first.body.state).toBe('PAID');
 
@@ -48,7 +48,7 @@ describe('melt', () => {
   it('records OWED on payout failure; same inputs retry to PAID', async () => {
     const mint = await makeMint();
     const proofs = await mintTokens(mint, 4);
-    const quote = await mint.post('/v1/melt/quote', { amount: 4, unit: 'usdc.e-base', to: PAYOUT_ADDR });
+    const quote = await mint.post('/v1/melt/quote', { amount: 4, unit: mint.config.unit, to: PAYOUT_ADDR });
 
     mint.payout.failNext = true;
     const failed = await mint.post('/v1/melt', { melt_id: quote.body.melt_id, inputs: proofs });
@@ -68,21 +68,21 @@ describe('melt', () => {
     const mint = await makeMint();
     const proofs = await mintTokens(mint, 4);
 
-    const quote = await mint.post('/v1/melt/quote', { amount: 8, unit: 'usdc.e-base', to: PAYOUT_ADDR });
+    const quote = await mint.post('/v1/melt/quote', { amount: 8, unit: mint.config.unit, to: PAYOUT_ADDR });
     const mismatch = await mint.post('/v1/melt', { melt_id: quote.body.melt_id, inputs: proofs });
     expect(mismatch.body.error.code).toBe('AMOUNT_MISMATCH');
 
-    const overLimit = await mint.post('/v1/melt/quote', { amount: mint.config.maxMintAmount + 1, unit: 'usdc.e-base', to: PAYOUT_ADDR });
+    const overLimit = await mint.post('/v1/melt/quote', { amount: mint.config.maxMintAmount + 1, unit: mint.config.unit, to: PAYOUT_ADDR });
     expect(overLimit.body.error.code).toBe('AMOUNT_LIMIT');
 
-    const badAddr = await mint.post('/v1/melt/quote', { amount: 4, unit: 'usdc.e-base', to: 'not-an-address' });
+    const badAddr = await mint.post('/v1/melt/quote', { amount: 4, unit: mint.config.unit, to: 'not-an-address' });
     expect(badAddr.body.error.code).toBe('INVALID_REQUEST');
   });
 
   it('one payout even under concurrent melt requests', async () => {
     const mint = await makeMint();
     const proofs = await mintTokens(mint, 8);
-    const quote = await mint.post('/v1/melt/quote', { amount: 8, unit: 'usdc.e-base', to: PAYOUT_ADDR });
+    const quote = await mint.post('/v1/melt/quote', { amount: 8, unit: mint.config.unit, to: PAYOUT_ADDR });
 
     const results = await Promise.all(
       Array.from({ length: 4 }, () => mint.post('/v1/melt', { melt_id: quote.body.melt_id, inputs: proofs })),

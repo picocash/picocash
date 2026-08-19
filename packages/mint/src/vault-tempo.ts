@@ -1,4 +1,5 @@
-import { createPublicClient, defineChain, http, parseAbiItem } from 'viem';
+import { createPublicClient, defineChain, http, parseAbi, parseAbiItem } from 'viem';
+import type { TempoConfig } from './config.js';
 import type { Deposit, DepositOracle } from './vault.js';
 
 // NB: memo is INDEXED on Tempo's TIP-20 (verified against a Moderato receipt:
@@ -44,6 +45,57 @@ export interface TempoVaultOptions {
 }
 
 const CHUNK = 10_000n;
+
+/**
+ * Startup check for the unit ↔ token ↔ vault binding (spec/02): the unit's
+ * token address must be a live TIP-20 on this chain, and if the deposit
+ * address is a vault contract, its token() must be exactly that token.
+ * Refusing to start beats minting tokens backed by the wrong asset.
+ */
+export async function verifyTokenBinding(
+  tempo: TempoConfig,
+): Promise<{ symbol: string; decimals: number }> {
+  const client = createPublicClient({
+    chain: defineChain({
+      id: tempo.chainId,
+      name: `tempo-${tempo.chainId}`,
+      nativeCurrency: { name: 'USD', symbol: 'USD', decimals: 18 },
+      rpcUrls: { default: { http: [tempo.rpcUrl] } },
+    }),
+    transport: http(tempo.rpcUrl),
+  });
+  const tokenAbi = parseAbi(['function symbol() view returns (string)', 'function decimals() view returns (uint8)']);
+
+  if (!(await client.getCode({ address: tempo.tokenAddress }))) {
+    throw new Error(`unit token ${tempo.tokenAddress} has no code on chain ${tempo.chainId} — not a TIP-20`);
+  }
+  const [symbol, decimals] = await Promise.all([
+    client.readContract({ address: tempo.tokenAddress, abi: tokenAbi, functionName: 'symbol' }),
+    client.readContract({ address: tempo.tokenAddress, abi: tokenAbi, functionName: 'decimals' }),
+  ]).catch(() => {
+    throw new Error(`token ${tempo.tokenAddress} does not answer symbol()/decimals() — not a TIP-20`);
+  });
+
+  if (await client.getCode({ address: tempo.depositAddress })) {
+    const vaultToken = await client
+      .readContract({
+        address: tempo.depositAddress,
+        abi: parseAbi(['function token() view returns (address)']),
+        functionName: 'token',
+      })
+      .catch(() => {
+        throw new Error(`deposit contract ${tempo.depositAddress} exposes no token() — not a picocash vault`);
+      });
+    if (vaultToken.toLowerCase() !== tempo.tokenAddress.toLowerCase()) {
+      throw new Error(
+        `vault ${tempo.depositAddress} is bound to token ${vaultToken}, but the mint's unit expects ${tempo.tokenAddress} — refusing to start`,
+      );
+    }
+  } else {
+    console.warn(`[mint] deposit address ${tempo.depositAddress} is an EOA (no vault contract) — token binding unverifiable on-chain`);
+  }
+  return { symbol, decimals: Number(decimals) };
+}
 
 /**
  * Real DepositOracle for build step 5: watches TIP-20 TransferWithMemo events
