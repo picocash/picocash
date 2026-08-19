@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>picocash wallet demo</title>
+<style>
+  :root { --bg:#0e1116; --card:#161b23; --line:#252c38; --text:#e6e9ef; --dim:#8b94a3;
+          --accent:#4ade80; --warn:#fbbf24; --err:#f87171; --mono:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif; }
+  .wrap { max-width:680px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:22px; margin:0; } h1 small { color:var(--dim); font-weight:400; font-size:13px; }
+  .banner { background:#3a2b0a; color:var(--warn); border:1px solid #6b510f; border-radius:8px;
+            padding:8px 12px; font-size:13px; margin:14px 0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin:14px 0; }
+  .card h2 { font-size:14px; margin:0 0 10px; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; }
+  label { display:block; font-size:12px; color:var(--dim); margin:8px 0 3px; }
+  input { width:100%; background:#0b0e13; color:var(--text); border:1px solid var(--line);
+          border-radius:6px; padding:8px 10px; font-family:var(--mono); font-size:13px; }
+  button { background:var(--accent); color:#06220f; border:0; border-radius:6px; padding:9px 16px;
+           font-weight:600; font-size:14px; cursor:pointer; margin:10px 8px 0 0; }
+  button.secondary { background:#252c38; color:var(--text); }
+  button:disabled { opacity:.45; cursor:default; }
+  .balance { font-size:34px; font-weight:700; } .balance small { font-size:15px; color:var(--dim); font-weight:400; }
+  .kv { font-family:var(--mono); font-size:12px; color:var(--dim); word-break:break-all; margin:2px 0; }
+  .kv b { color:var(--text); font-weight:500; }
+  #log { font-family:var(--mono); font-size:12px; background:#0b0e13; border:1px solid var(--line);
+         border-radius:6px; padding:10px; max-height:220px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; }
+  .ok { color:var(--accent); } .warn { color:var(--warn); } .err { color:var(--err); }
+  table { width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12px; }
+  td,th { padding:4px 6px; border-bottom:1px solid var(--line); text-align:left; }
+  th { color:var(--dim); font-weight:500; }
+  .spent { color:var(--err); text-decoration:line-through; }
+  details summary { cursor:pointer; color:var(--dim); font-size:13px; margin-top:8px; }
+  textarea { width:100%; height:110px; background:#0b0e13; color:var(--dim); border:1px solid var(--line);
+             border-radius:6px; font-family:var(--mono); font-size:11px; padding:8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>picocash <small>wallet demo — mint eCash from a $1 testnet deposit</small></h1>
+  <div class="banner">⚠ Tempo <b>Moderato testnet</b> only. Test funds, test keys, pre-alpha software — do not use anything real here.</div>
+
+  <div class="card">
+    <h2>Mint</h2>
+    <label>Mint URL</label>
+    <input id="mintUrl" value="http://localhost:3338">
+    <button id="connectBtn">Connect</button>
+    <div id="mintInfo"></div>
+  </div>
+
+  <div class="card">
+    <h2>Balance</h2>
+    <div class="balance"><span id="balance">0.000000</span> <small>USD (testnet pathUSD)</small></div>
+    <div id="tokenTable"></div>
+    <button class="secondary" id="checkBtn" disabled>Check spent states</button>
+    <details><summary>Export raw proofs</summary><textarea id="exportBox" readonly></textarea></details>
+  </div>
+
+  <div class="card">
+    <h2>Mint $1 of tokens</h2>
+    <p style="font-size:13px;color:var(--dim);margin:0 0 6px">
+      Requests a quote, sends <b>1.000000 pathUSD</b> on Tempo testnet via
+      <code>transferWithMemo</code> (memo = quote id), then blinds, mints, and DLEQ-verifies your tokens.
+    </p>
+    <label>Testnet private key (0x…, pays the $1 — testnet only, never leaves this page)</label>
+    <input id="payerKey" type="password" placeholder="0x…">
+    <button id="mintKeyBtn" disabled>Pay with key &amp; mint</button>
+    <button id="mintWalletBtn" class="secondary" disabled>Pay with browser wallet</button>
+    <div id="quoteInfo"></div>
+  </div>
+
+  <div class="card">
+    <h2>Log</h2>
+    <div id="log"></div>
+  </div>
+</div>
+
+<script type="module">
+import { secp256k1 } from 'https://esm.sh/@noble/curves@1.9.2/secp256k1';
+import { sha256 } from 'https://esm.sh/@noble/hashes@1.8.0/sha2';
+import { bytesToHex, hexToBytes, concatBytes, utf8ToBytes } from 'https://esm.sh/@noble/hashes@1.8.0/utils';
+import { createWalletClient, http, defineChain, encodeFunctionData, parseAbi } from 'https://esm.sh/viem@2.38.5';
+import { privateKeyToAccount } from 'https://esm.sh/viem@2.38.5/accounts';
+
+// ---- crypto client (mirrors packages/crypto; spec/01-crypto.md) ------------
+const Point = secp256k1.ProjectivePoint;
+const ORDER = secp256k1.CURVE.n;
+const DOMAIN = utf8ToBytes('Secp256k1_HashToCurve_Cashu_');
+const toBig = (b) => BigInt('0x' + bytesToHex(b));
+const modn = (x) => ((x % ORDER) + ORDER) % ORDER;
+
+function hashToCurve(message) {
+  const msgHash = sha256(concatBytes(DOMAIN, message));
+  const counter = new Uint8Array(4); const view = new DataView(counter.buffer);
+  for (let i = 0; i < 65536; i++) {
+    view.setUint32(0, i, true);
+    try { return Point.fromHex(concatBytes(new Uint8Array([2]), sha256(concatBytes(msgHash, counter)))); } catch {}
+  }
+  throw new Error('hash_to_curve failed');
+}
+function blind(secret) {
+  const r = secp256k1.utils.randomPrivateKey();
+  const B_ = hashToCurve(secret).add(Point.BASE.multiply(toBig(r)));
+  return { B_: bytesToHex(B_.toRawBytes(true)), r };
+}
+function unblind(C_hex, r, K_hex) {
+  const C = Point.fromHex(C_hex).subtract(Point.fromHex(K_hex).multiply(toBig(r)));
+  return bytesToHex(C.toRawBytes(true));
+}
+function hashE(...points) {
+  let acc = ''; for (const p of points) acc += bytesToHex(p.toRawBytes(false));
+  return sha256(utf8ToBytes(acc));
+}
+function verifyDleq(B_hex, C_hex, K_hex, dleq) {
+  try {
+    const Bp = Point.fromHex(B_hex), Cp = Point.fromHex(C_hex), Kp = Point.fromHex(K_hex);
+    const e = modn(toBig(hexToBytes(dleq.e))), s = modn(toBig(hexToBytes(dleq.s)));
+    const mul = (P, k) => k === 0n ? Point.ZERO : P.multiply(k);
+    const R1 = mul(Point.BASE, s).subtract(mul(Kp, e));
+    const R2 = mul(Bp, s).subtract(mul(Cp, e));
+    return bytesToHex(hashE(R1, R2, Kp, Cp)) === dleq.e;
+  } catch { return false; }
+}
+const yOf = (secretHex) => bytesToHex(hashToCurve(hexToBytes(secretHex)).toRawBytes(true));
+
+// ---- state -----------------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+const AMOUNT = 1_000_000; // $1 in 6-decimal base units
+let mint = null;          // { url, unit, keyset:{id, keys} }
+let tokens = JSON.parse(localStorage.getItem('picocash.demo.tokens') ?? '[]');
+const transferAbi = parseAbi(['function transferWithMemo(address to, uint256 amount, bytes32 memo)']);
+
+function log(msg, cls = '') {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = `${new Date().toLocaleTimeString()}  ${msg}`;
+  $('log').appendChild(line); $('log').scrollTop = 1e9;
+}
+async function api(method, path, body) {
+  const res = await fetch(`${mint.url}${path}`, {
+    method, ...(body ? { headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {}),
+  });
+  const json = await res.json();
+  if (!res.ok) {
+    const e = json.error ?? {};
+    throw new Error(`${e.code ?? res.status}: ${e.message ?? 'request failed'}${e.recovery ? ` — ${e.recovery}` : ''}`);
+  }
+  return json;
+}
+function saveTokens() { localStorage.setItem('picocash.demo.tokens', JSON.stringify(tokens)); render(); }
+function render() {
+  const live = tokens.filter((t) => !t.spent);
+  $('balance').textContent = (live.reduce((s, t) => s + t.amount, 0) / 1e6).toFixed(6);
+  $('checkBtn').disabled = !mint || tokens.length === 0;
+  $('exportBox').value = JSON.stringify(tokens, null, 1);
+  if (!tokens.length) { $('tokenTable').innerHTML = ''; return; }
+  const rows = tokens.map((t) =>
+    `<tr class="${t.spent ? 'spent' : ''}"><td>${(t.amount / 1e6).toFixed(6)}</td><td>${t.keyset_id}</td><td>${t.C.slice(0, 18)}…</td><td>${t.spent ? 'SPENT' : 'ok'}</td></tr>`).join('');
+  $('tokenTable').innerHTML = `<table><tr><th>amount $</th><th>keyset</th><th>C</th><th>state</th></tr>${rows}</table>`;
+}
+
+// ---- connect ---------------------------------------------------------------
+$('connectBtn').onclick = async () => {
+  try {
+    const url = $('mintUrl').value.replace(/\/$/, '');
+    mint = { url };
+    const info = await api('GET', '/v1/info');
+    const keyset = (await api('GET', '/v1/keys')).keysets[0];
+    mint.unit = info.unit; mint.keyset = keyset; mint.vault = info.vault;
+    $('mintInfo').innerHTML = `
+      <div class="kv"><b>${info.name}</b> · ${info.version}</div>
+      <div class="kv">keyset <b>${keyset.id}</b> · unit ${info.unit}</div>
+      <div class="kv">vault ${typeof info.vault === 'object' ? `tempo chain <b>${info.vault.chain_id}</b> · token ${info.vault.token}` : info.vault}</div>`;
+    $('mintKeyBtn').disabled = false;
+    $('mintWalletBtn').disabled = typeof info.vault !== 'object';
+    log(`connected to ${info.name} (keyset ${keyset.id})`, 'ok');
+    render();
+  } catch (err) { log(`connect failed: ${err.message}`, 'err'); }
+};
+
+// ---- mint flow -------------------------------------------------------------
+function decompose(amount) {
+  const parts = [];
+  for (let pow = 30; pow >= 0; pow--) if (amount & (2 ** pow)) parts.push(2 ** pow);
+  return parts;
+}
+
+async function payAndMint(sendPayment) {
+  const quote = await api('POST', '/v1/mint/quote', { amount: AMOUNT, unit: mint.unit });
+  $('quoteInfo').innerHTML = `
+    <div class="kv">quote <b>${quote.quote_id.slice(0, 16)}…</b></div>
+    <div class="kv">deposit ${(quote.amount / 1e6).toFixed(6)} to <b>${quote.deposit.to}</b></div>
+    <div class="kv">memo <b>${quote.deposit.memo}</b></div>`;
+  log(`quote ${quote.quote_id.slice(0, 16)}… for $${(AMOUNT / 1e6).toFixed(2)}`);
+
+  const txHash = await sendPayment(quote);
+  log(`payment sent: ${txHash}`, 'ok');
+
+  log('waiting for the mint to observe the deposit…');
+  const start = Date.now();
+  let state = quote.state;
+  while (state !== 'PAID') {
+    if (Date.now() - start > 180_000) throw new Error('timed out waiting for the deposit');
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    state = (await api('GET', `/v1/mint/quote/${quote.quote_id}`)).state;
+  }
+  log(`deposit observed on-chain — quote PAID after ${((Date.now() - start) / 1000).toFixed(1)}s`, 'ok');
+
+  const pending = decompose(AMOUNT).map((amount) => {
+    const secret = bytesToHex(secp256k1.utils.randomPrivateKey());
+    const { B_, r } = blind(hexToBytes(secret));
+    return { amount, secret, r, B_ };
+  });
+  const minted = await api('POST', '/v1/mint', {
+    quote_id: quote.quote_id,
+    outputs: pending.map((p) => ({ amount: p.amount, keyset_id: mint.keyset.id, B_: p.B_ })),
+  });
+  for (const [i, sig] of minted.signatures.entries()) {
+    const p = pending[i];
+    const K = mint.keyset.keys[String(p.amount)];
+    if (!verifyDleq(p.B_, sig.C_, K, sig.dleq)) throw new Error(`DLEQ failed for output ${i} — rejecting signature`);
+    tokens.push({ amount: p.amount, keyset_id: mint.keyset.id, secret: p.secret, C: unblind(sig.C_, p.r, K), mint: mint.url });
+  }
+  saveTokens();
+  log(`minted ${minted.signatures.length} proofs, all DLEQs verified in-browser — balance updated`, 'ok');
+}
+
+function tempoChain(quote) {
+  return defineChain({
+    id: quote.deposit.chain_id, name: 'tempo-moderato',
+    nativeCurrency: { name: 'USD', symbol: 'USD', decimals: 18 },
+    rpcUrls: { default: { http: ['https://rpc.moderato.tempo.xyz'] } },
+  });
+}
+
+$('mintKeyBtn').onclick = async () => {
+  $('mintKeyBtn').disabled = true;
+  try {
+    const key = $('payerKey').value.trim();
+    if (!/^0x[0-9a-fA-F]{64}$/.test(key)) throw new Error('paste a 32-byte 0x… testnet private key');
+    await payAndMint(async (quote) => {
+      const wallet = createWalletClient({ account: privateKeyToAccount(key), chain: tempoChain(quote), transport: http() });
+      return wallet.writeContract({
+        address: quote.deposit.token, abi: transferAbi, functionName: 'transferWithMemo',
+        args: [quote.deposit.to, BigInt(quote.amount), quote.deposit.memo],
+      });
+    });
+  } catch (err) { log(err.message, 'err'); }
+  $('mintKeyBtn').disabled = false;
+};
+
+$('mintWalletBtn').onclick = async () => {
+  $('mintWalletBtn').disabled = true;
+  try {
+    if (!window.ethereum) throw new Error('no browser wallet found (window.ethereum missing)');
+    await payAndMint(async (quote) => {
+      const chainIdHex = '0x' + quote.deposit.chain_id.toString(16);
+      await window.ethereum.request({ method: 'wallet_addEthereumChain', params: [{
+        chainId: chainIdHex, chainName: 'Tempo Moderato (testnet)',
+        nativeCurrency: { name: 'USD', symbol: 'USD', decimals: 18 },
+        rpcUrls: ['https://rpc.moderato.tempo.xyz'], blockExplorerUrls: ['https://explore.testnet.tempo.xyz'],
+      }]}).catch(() => {});
+      const [from] = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      return window.ethereum.request({ method: 'eth_sendTransaction', params: [{
+        from, to: quote.deposit.token,
+        data: encodeFunctionData({ abi: transferAbi, functionName: 'transferWithMemo',
+          args: [quote.deposit.to, BigInt(quote.amount), quote.deposit.memo] }),
+      }]});
+    });
+  } catch (err) { log(err.message, 'err'); }
+  $('mintWalletBtn').disabled = false;
+};
+
+$('checkBtn').onclick = async () => {
+  try {
+    const states = await api('POST', '/v1/checkstate', { Ys: tokens.map((t) => yOf(t.secret)) });
+    tokens.forEach((t, i) => { t.spent = states.states[i].state === 'SPENT'; });
+    saveTokens();
+    log(`checkstate: ${states.states.filter((s) => s.state === 'SPENT').length} spent, ${states.states.filter((s) => s.state === 'UNSPENT').length} live`);
+  } catch (err) { log(err.message, 'err'); }
+};
+
+render();
+log('ready — connect to a mint to begin');
+</script>
+</body>
+</html>

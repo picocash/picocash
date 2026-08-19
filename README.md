@@ -32,7 +32,7 @@ The core deliverable is [`spec/04-mpp-method.md`](spec/04-mpp-method.md): a `pic
 | [`packages/sdk`](packages/sdk/) | Agent wallet-lite client | skeleton |
 | [`packages/mppx-method`](packages/mppx-method/) | MPP custom method implementation | skeleton |
 | [`contracts/`](contracts/) | Vault contract (Foundry, Tempo) | skeleton |
-| [`apps/wallet-demo`](apps/wallet-demo/) | Static HTML wallet: mint / melt / transfer | skeleton |
+| [`apps/wallet-demo`](apps/wallet-demo/) | Static HTML wallet: mint / melt / transfer | **mint flow works on Tempo testnet** — $1 deposit → tokens, DLEQ verified in-browser |
 | [`apps/reference`](apps/reference/) | picocash.app reference mint deployment | skeleton |
 
 ## Test vectors

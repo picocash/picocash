@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { z } from 'zod';
 import type { MintContext } from './context.js';
 import { ApiError } from './errors.js';
@@ -9,6 +10,11 @@ import { amountSchema, checkstateRequestSchema, parseBody } from './validation.j
 
 export function buildApp(ctx: MintContext): Hono {
   const app = new Hono();
+
+  // Browser wallets (apps/wallet-demo) talk to the mint cross-origin. The API
+  // is unauthenticated by design — tokens are bearer instruments — so open
+  // CORS gives up nothing.
+  app.use('*', cors());
 
   app.onError((err, c) => {
     if (err instanceof ApiError) return c.json(err.toBody(), err.status as never);
