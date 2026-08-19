@@ -1,8 +1,29 @@
 {
   "name": "@picocash/mint",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
-  "description": "picocash mint server (Hono + Postgres) — build step 4, not yet started",
+  "description": "picocash mint server (Hono + Postgres); build step 4 runs against a fake in-memory vault",
   "license": "Apache-2.0",
-  "type": "module"
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.5",
+    "@hono/node-server": "^1.13.0",
+    "@picocash/crypto": "*",
+    "hono": "^4.6.0",
+    "pg": "^8.13.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
 }
