@@ -7,3 +7,4 @@ dist/
 .wrangler/
 coverage/
 .DS_Store
+claude-chat.md
