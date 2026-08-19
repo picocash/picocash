@@ -1,20 +1,51 @@
 import { sha256 } from '@noble/hashes/sha2';
 import { hexToBytes, utf8ToBytes } from '@picocash/crypto';
 
+export interface TempoConfig {
+  rpcUrl: string;
+  chainId: number;
+  tokenAddress: `0x${string}`;
+  depositAddress: `0x${string}`;
+  confirmations: number;
+  lookbackBlocks: bigint;
+}
+
 export interface MintConfig {
   name: string;
   unit: string;
   seed: Uint8Array;
   port: number;
   databaseUrl: string | undefined;
+  vault: 'fake' | 'tempo';
   fakeVault: boolean;
+  tempo?: TempoConfig;
   /** Max amount per mint quote, base units. */
   maxMintAmount: number;
   quoteTtlSeconds: number;
 }
 
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
+function loadTempoConfig(env: NodeJS.ProcessEnv): TempoConfig {
+  const depositAddress = env.PICOCASH_DEPOSIT_ADDRESS;
+  if (!depositAddress || !ADDRESS_RE.test(depositAddress)) {
+    throw new Error('PICOCASH_DEPOSIT_ADDRESS (0x…, 20 bytes) is required for PICOCASH_VAULT=tempo');
+  }
+  const tokenAddress = env.PICOCASH_TEMPO_TOKEN ?? '0x20c0000000000000000000000000000000000000'; // pathUSD on Moderato
+  if (!ADDRESS_RE.test(tokenAddress)) throw new Error('PICOCASH_TEMPO_TOKEN must be a 0x… address');
+  return {
+    rpcUrl: env.PICOCASH_TEMPO_RPC ?? 'https://rpc.moderato.tempo.xyz',
+    chainId: Number(env.PICOCASH_TEMPO_CHAIN_ID ?? 42431),
+    tokenAddress: tokenAddress as `0x${string}`,
+    depositAddress: depositAddress as `0x${string}`,
+    confirmations: Number(env.PICOCASH_TEMPO_CONFIRMATIONS ?? 1),
+    lookbackBlocks: BigInt(env.PICOCASH_TEMPO_LOOKBACK ?? 5_000),
+  };
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): MintConfig {
-  const fakeVault = env.PICOCASH_FAKE_VAULT !== '0'; // fake until the real vault lands (step 5)
+  const vault = env.PICOCASH_VAULT === 'tempo' ? 'tempo' : 'fake';
+  const fakeVault = vault === 'fake';
   let seed: Uint8Array;
   if (env.PICOCASH_MINT_SEED) {
     seed = hexToBytes(env.PICOCASH_MINT_SEED);
@@ -33,7 +64,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MintConfig {
     seed,
     port: Number(env.PORT ?? 3338),
     databaseUrl: env.DATABASE_URL,
+    vault,
     fakeVault,
+    ...(vault === 'tempo' ? { tempo: loadTempoConfig(env) } : {}),
     maxMintAmount: Number(env.PICOCASH_MAX_MINT_AMOUNT ?? 100_000_000), // $100
     quoteTtlSeconds: Number(env.PICOCASH_QUOTE_TTL_SECONDS ?? 900),
   };

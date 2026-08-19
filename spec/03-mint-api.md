@@ -51,13 +51,22 @@ Request `{ "amount": 1000000, "unit": "usdc.e-base" }`. Response:
 
 ```jsonc
 {
-  "quote_id": "<uuid>", "amount": 1000000, "unit": "usdc.e-base",
+  "quote_id": "<32 bytes, hex>",        // doubles as the bytes32 deposit memo
+  "amount": 1000000, "unit": "usdc.e-base",
   "state": "UNPAID",                    // UNPAID → PAID → ISSUED
-  "deposit": { "method": "fake-vault", "contract": null, "memo": "<quote_id>",
-               "note": "transferWithMemo(amount, memo) to the vault contract; memo binds the deposit to this quote" },
+  "deposit": {
+    "method": "tempo",                  // or "fake-vault" in dev
+    "chain_id": 42431,
+    "token": "0x20c0…0000",             // TIP-20 token contract
+    "to": "0x…",                        // deposit address (vault contract once it lands; mint-operator address until then)
+    "memo": "0x<quote_id>",
+    "note": "call transferWithMemo(to, amount, memo) on the token contract; the memo binds the deposit to this quote"
+  },
   "expires_at": 1755630000
 }
 ```
+
+The quote id is 32 random bytes so it fits a TIP-20 `bytes32` memo exactly, with no padding convention needed. The mint observes `TransferWithMemo(address indexed from, address indexed to, uint256 amount, bytes32 indexed memo)` events (memo is indexed on Tempo's TIP-20) and credits the quote whose id matches the memo; deposits may span multiple transfers. Note the sender's fee is charged separately in the same token — the deposited `amount` arrives intact.
 
 `GET /v1/mint/quote/{quote_id}` polls state.
 

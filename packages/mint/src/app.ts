@@ -33,7 +33,10 @@ export function buildApp(ctx: MintContext): Hono {
       unit: ctx.config.unit,
       keysets: [{ id: ctx.keyset.id, unit: ctx.keyset.unit, state: 'active' }],
       limits: { max_mint_amount: ctx.config.maxMintAmount },
-      vault: ctx.config.fakeVault ? 'fake' : null,
+      vault:
+        ctx.config.vault === 'tempo' && ctx.config.tempo
+          ? { method: 'tempo', chain_id: ctx.config.tempo.chainId, token: ctx.config.tempo.tokenAddress, deposit_address: ctx.config.tempo.depositAddress }
+          : 'fake',
       contact: { security: 'security@picocash.dev' },
       status: 'pre-alpha technology demonstration — do not use with real funds',
     }),

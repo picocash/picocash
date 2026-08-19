@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { Hono } from 'hono';
 import type { MintContext } from '../context.js';
 import { ApiError } from '../errors.js';
@@ -17,19 +17,27 @@ interface QuoteRow {
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 function quoteResponse(ctx: MintContext, row: QuoteRow) {
+  const tempo = ctx.config.tempo;
   return {
     quote_id: row.id,
     amount: Number(row.amount),
     unit: row.unit,
     state: row.state,
-    deposit: {
-      method: ctx.config.fakeVault ? 'fake-vault' : 'vault',
-      contract: null, // vault contract address once it exists (build step 5)
-      memo: row.id,
-      note: ctx.config.fakeVault
-        ? 'fake vault: POST /dev/deposit {"quote_id","amount"} to simulate the on-chain deposit'
-        : 'transferWithMemo(amount, memo) to the vault contract; the memo binds the deposit to this quote',
-    },
+    deposit:
+      ctx.config.vault === 'tempo' && tempo
+        ? {
+            method: 'tempo',
+            chain_id: tempo.chainId,
+            token: tempo.tokenAddress,
+            to: tempo.depositAddress, // vault contract once it lands; mint-operator address until then
+            memo: `0x${row.id}`,
+            note: 'call transferWithMemo(to, amount, memo) on the token contract; the memo binds the deposit to this quote',
+          }
+        : {
+            method: 'fake-vault',
+            memo: `0x${row.id}`,
+            note: 'fake vault: POST /dev/deposit {"quote_id","amount"} to simulate the on-chain deposit',
+          },
     expires_at: Number(row.expires_at),
   };
 }
@@ -65,7 +73,7 @@ export function mintRoutes(ctx: MintContext): Hono {
     if (body.amount > ctx.config.maxMintAmount) {
       throw new ApiError(400, 'AMOUNT_LIMIT', `amount exceeds the per-quote limit of ${ctx.config.maxMintAmount}`, 'request a smaller amount, or split across multiple quotes');
     }
-    const id = randomUUID();
+    const id = randomBytes(32).toString('hex'); // 32 bytes: fits a TIP-20 bytes32 memo exactly
     const expiresAt = nowSeconds() + ctx.config.quoteTtlSeconds;
     await ctx.db.query('INSERT INTO mint_quotes (id, amount, unit, expires_at) VALUES ($1, $2, $3, $4)', [id, body.amount, body.unit, expiresAt]);
     const quote = await fetchQuote(ctx, id);

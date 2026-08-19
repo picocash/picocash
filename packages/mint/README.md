@@ -15,8 +15,20 @@ Real Postgres semantics either way:
 
 ## Run it
 
+**Against Tempo testnet (Moderato)** — real on-chain deposits, real oracle:
+
 ```sh
-npm run dev          # starts on :3338 with the fake vault and an INSECURE fixed dev seed
+npx tsx scripts/setup-testnet.ts   # writes .env (seed + wallets, gitignored) and faucet-funds them
+npm run dev                        # mint on :3338, watching TransferWithMemo events on chain 42431
+npx tsx scripts/testnet-e2e.ts     # quote → real pathUSD transferWithMemo → mint → DLEQ verify → swap
+```
+
+The deposit flow: the quote id is 32 bytes and doubles as the TIP-20 `bytes32` memo; the mint credits quotes from `TransferWithMemo(from, to, amount, memo)` events (memo is **indexed** on Tempo — a non-indexed ABI decodes it as undefined and deposits vanish, ask us how we know). Deposits currently go to the mint-operator address; the vault contract replaces that address in build step 5 without changing the API.
+
+**Against the fake vault** (no chain, no config):
+
+```sh
+npm run dev          # with no .env: fake vault + an INSECURE fixed dev seed
 ```
 
 ```sh

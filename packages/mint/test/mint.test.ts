@@ -33,7 +33,8 @@ describe('mint flow', () => {
     const quote = await mint.post('/v1/mint/quote', { amount, unit: 'usdc.e-base' });
     expect(quote.status).toBe(200);
     expect(quote.body.state).toBe('UNPAID');
-    expect(quote.body.deposit.memo).toBe(quote.body.quote_id);
+    expect(quote.body.quote_id).toMatch(/^[0-9a-f]{64}$/); // 32 bytes: doubles as the bytes32 memo
+    expect(quote.body.deposit.memo).toBe(`0x${quote.body.quote_id}`);
 
     const { outputs, pending } = makeOutputs(mint.keyset.id, decompose(amount));
 
