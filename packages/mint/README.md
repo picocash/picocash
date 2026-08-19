@@ -38,7 +38,9 @@ curl -s -X POST :3338/dev/deposit   -d '{"quote_id":"<id>","amount":1000000}'   
 curl -s -X POST :3338/v1/mint       -d '{"quote_id":"<id>","outputs":[...]}'    # blinded messages → signatures
 ```
 
-Config via env: `PICOCASH_MINT_SEED` (32-byte hex; the only secret — encrypted at rest in real deployments, never in code or logs), `PORT`, `DATABASE_URL`, `PICOCASH_MAX_MINT_AMOUNT`, `PICOCASH_QUOTE_TTL_SECONDS`. Melt endpoints return `NOT_IMPLEMENTED` until the vault lands (build step 5).
+Config via env: `PICOCASH_MINT_SEED` (32-byte hex; encrypted at rest in real deployments, never in code or logs), `PICOCASH_OPERATOR_KEY` (signs `vault.withdraw` for melts; melt answers `NOT_IMPLEMENTED` without it), `PORT`, `DATABASE_URL`, `PICOCASH_MAX_MINT_AMOUNT`, `PICOCASH_QUOTE_TTL_SECONDS`.
+
+**Melt** (`POST /v1/melt/quote` → `POST /v1/melt`) burns proofs insert-before-pay and pays out through [`PicocashVault.withdraw`](https://github.com/picocash/picocash-contracts) — one payout per melt id enforced on-chain, so a failed payout (`OWED`) can be retried with the same inputs without double-pay risk. Deposits go to the vault contract (Moderato: `0x4336A5914BFF9912050c6518fbF46e599336D384`).
 
 ```sh
 npm test             # 11 tests incl. double-spend + concurrency races

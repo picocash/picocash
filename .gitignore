@@ -7,5 +7,3 @@ dist/
 .wrangler/
 coverage/
 .DS_Store
-contracts/out/
-contracts/cache/

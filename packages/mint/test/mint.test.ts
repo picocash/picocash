@@ -114,16 +114,11 @@ describe('mint flow', () => {
     expect(reused.body.error.code).toBe('OUTPUT_ALREADY_SIGNED');
   });
 
-  it('404s unknown quotes and 501s melt', async () => {
+  it('404s unknown quotes', async () => {
     const mint = await makeMint();
     const missing = await mint.post('/v1/mint', { quote_id: 'nope', outputs: makeOutputs(mint.keyset.id, [1]).outputs });
     expect(missing.status).toBe(404);
     expect(missing.body.error.code).toBe('QUOTE_NOT_FOUND');
-
-    const melt = await mint.post('/v1/melt/quote', { amount: 1 });
-    expect(melt.status).toBe(501);
-    expect(melt.body.error.code).toBe('NOT_IMPLEMENTED');
-    expect(melt.body.error.recovery).toBeTruthy();
   });
 
   it('serves concurrent identical mint requests exactly once', async () => {

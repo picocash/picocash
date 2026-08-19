@@ -11,6 +11,8 @@ export type ErrorCode =
   | 'AMOUNT_MISMATCH'
   | 'INVALID_PROOF'
   | 'AMOUNT_LIMIT'
+  | 'MELT_ALREADY_PAID'
+  | 'PAYOUT_FAILED'
   | 'NOT_IMPLEMENTED';
 
 /** Every API error carries a mandatory `recovery` hint for the calling agent. */

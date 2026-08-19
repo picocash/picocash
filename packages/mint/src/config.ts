@@ -5,7 +5,10 @@ export interface TempoConfig {
   rpcUrl: string;
   chainId: number;
   tokenAddress: `0x${string}`;
+  /** Where deposits go and what the oracle watches: the vault contract. */
   depositAddress: `0x${string}`;
+  /** Signs vault.withdraw() for melts. Melt is disabled when absent. */
+  operatorKey?: `0x${string}` | undefined;
   confirmations: number;
   lookbackBlocks: bigint;
 }
@@ -38,6 +41,9 @@ function loadTempoConfig(env: NodeJS.ProcessEnv): TempoConfig {
     chainId: Number(env.PICOCASH_TEMPO_CHAIN_ID ?? 42431),
     tokenAddress: tokenAddress as `0x${string}`,
     depositAddress: depositAddress as `0x${string}`,
+    operatorKey: /^0x[0-9a-fA-F]{64}$/.test(env.PICOCASH_OPERATOR_KEY ?? '')
+      ? (env.PICOCASH_OPERATOR_KEY as `0x${string}`)
+      : undefined,
     confirmations: Number(env.PICOCASH_TEMPO_CONFIRMATIONS ?? 1),
     lookbackBlocks: BigInt(env.PICOCASH_TEMPO_LOOKBACK ?? 5_000),
   };

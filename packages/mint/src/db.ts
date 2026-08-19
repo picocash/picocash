@@ -96,6 +96,18 @@ CREATE TABLE IF NOT EXISTS spent_secrets (
   spent_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS melt_quotes (
+  id TEXT PRIMARY KEY,
+  amount BIGINT NOT NULL CHECK (amount > 0),
+  unit TEXT NOT NULL,
+  to_address TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'UNPAID',
+  inputs_hash TEXT,
+  tx_hash TEXT,
+  expires_at BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Every issued blind signature. PRIMARY KEY on b makes each B_ single-use
 -- globally and gives /v1/mint its idempotent replay.
 CREATE TABLE IF NOT EXISTS blind_signatures (

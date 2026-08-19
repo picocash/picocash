@@ -1,8 +1,50 @@
-import { bytesToHex, createDleqProof, hexToBytes, signBlindedMessage } from '@picocash/crypto';
+import { bytesToHex, createDleqProof, hashToCurve, hexToBytes, signBlindedMessage, verifyProof } from '@picocash/crypto';
 import type { Queryable } from './db.js';
 import { ApiError } from './errors.js';
 import type { Keyset } from './keyset.js';
-import type { BlindedMessage } from './validation.js';
+import type { BlindedMessage, ProofInput } from './validation.js';
+
+export interface VerifiedInput extends ProofInput {
+  y: string;
+}
+
+/** Crypto-verify spend inputs against the keyset and compute their ledger key Y. */
+export function verifyInputs(keyset: Keyset, inputs: ProofInput[]): VerifiedInput[] {
+  const seen = new Set<string>();
+  return inputs.map((input, index) => {
+    // Single active keyset for now; swap-only keysets join with rotation (spec/02).
+    if (input.keyset_id !== keyset.id) {
+      throw new ApiError(400, 'KEYSET_UNKNOWN', `input ${index}: unknown keyset ${input.keyset_id}`, `fetch GET /v1/keys; this mint's keyset is ${keyset.id}`);
+    }
+    const key = keyset.keys.get(input.amount);
+    if (!key) {
+      throw new ApiError(400, 'INVALID_REQUEST', `input ${index}: ${input.amount} is not a valid denomination`, 'denominations are powers of 2; see GET /v1/keys');
+    }
+    const secret = hexToBytes(input.secret);
+    if (!verifyProof(secret, hexToBytes(input.C), key.privkey)) {
+      throw new ApiError(400, 'INVALID_PROOF', `input ${index}: signature does not verify`, 'the proof is not a valid token from this mint/keyset; check secret encoding (raw bytes, hex) and C');
+    }
+    const y = bytesToHex(hashToCurve(secret).toRawBytes(true));
+    if (seen.has(y)) {
+      throw new ApiError(400, 'INVALID_REQUEST', `input ${index}: duplicate proof in request`, 'each proof may appear once per request');
+    }
+    seen.add(y);
+    return { ...input, y };
+  });
+}
+
+/** Insert input Ys into the spent-secret ledger; conflict aborts the transaction. */
+export async function spendInputs(q: Queryable, inputs: VerifiedInput[]): Promise<void> {
+  for (const input of inputs) {
+    const inserted = await q.query(
+      'INSERT INTO spent_secrets (y, keyset_id, amount) VALUES ($1, $2, $3) ON CONFLICT (y) DO NOTHING RETURNING y',
+      [input.y, input.keyset_id, input.amount],
+    );
+    if (inserted.rows.length === 0) {
+      throw new ApiError(409, 'TOKEN_ALREADY_SPENT', `token with Y ${input.y.slice(0, 16)}… is already spent`, 'drop this proof (it is worthless) and check remaining tokens via POST /v1/checkstate');
+    }
+  }
+}
 
 export interface SignatureResponse {
   amount: number;

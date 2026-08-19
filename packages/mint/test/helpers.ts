@@ -14,6 +14,7 @@ import type { MintConfig } from '../src/config.js';
 import { createPgliteDb, type Db } from '../src/db.js';
 import { migrate } from '../src/db.js';
 import { deriveKeyset, type Keyset } from '../src/keyset.js';
+import { FakePayout } from '../src/payout.js';
 import { FakeVault } from '../src/vault.js';
 
 export interface TestMint {
@@ -21,6 +22,7 @@ export interface TestMint {
   db: Db;
   keyset: Keyset;
   fakeVault: FakeVault;
+  payout: FakePayout;
   config: MintConfig;
   get(path: string): Promise<{ status: number; body: any }>;
   post(path: string, body: unknown): Promise<{ status: number; body: any }>;
@@ -42,7 +44,8 @@ export async function makeMint(): Promise<TestMint> {
   const keyset = deriveKeyset(config.seed, config.unit);
   await db.query('INSERT INTO keysets (id, unit) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING', [keyset.id, keyset.unit]);
   const fakeVault = new FakeVault();
-  const app = buildApp({ db, config, oracle: fakeVault, keyset, fakeVault });
+  const payout = new FakePayout();
+  const app = buildApp({ db, config, oracle: fakeVault, keyset, payout, fakeVault });
 
   const request = async (path: string, init?: RequestInit) => {
     const res = await app.request(path, init);
@@ -53,6 +56,7 @@ export async function makeMint(): Promise<TestMint> {
     db,
     keyset,
     fakeVault,
+    payout,
     config,
     get: (path) => request(path),
     post: (path, body) =>

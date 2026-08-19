@@ -48,6 +48,17 @@ export const checkstateRequestSchema = z.object({
   Ys: z.array(pointSchema).min(1).max(200),
 });
 
+export const meltQuoteRequestSchema = z.object({
+  amount: amountSchema.max(Number.MAX_SAFE_INTEGER),
+  unit: z.string(),
+  to: z.string().regex(/^0x[0-9a-fA-F]{40}$/, 'expected a 20-byte 0x… payout address'),
+});
+
+export const meltRequestSchema = z.object({
+  melt_id: z.string().regex(/^[0-9a-f]{64}$/),
+  inputs: z.array(proofSchema).min(1).max(64),
+});
+
 export async function parseBody<S extends z.ZodTypeAny>(c: Context, schema: S): Promise<z.infer<S>> {
   let raw: unknown;
   try {

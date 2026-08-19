@@ -3,6 +3,7 @@ import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createPgDb, createPgliteDb, migrate, type Db } from './db.js';
 import { deriveKeyset } from './keyset.js';
+import { FakePayout, TempoPayout, type PayoutExecutor } from './payout.js';
 import { TempoVault } from './vault-tempo.js';
 import { FakeVault, type DepositOracle } from './vault.js';
 
@@ -21,18 +22,21 @@ export async function main(): Promise<void> {
 
   let oracle: DepositOracle;
   let fakeVault: FakeVault | undefined;
+  let payout: PayoutExecutor | undefined;
   let vaultLabel: string;
   if (config.vault === 'tempo') {
     const tempo = config.tempo!;
     oracle = new TempoVault(tempo);
-    vaultLabel = `TEMPO chain ${tempo.chainId}, token ${tempo.tokenAddress}, deposits → ${tempo.depositAddress}`;
+    payout = tempo.operatorKey ? new TempoPayout(tempo) : undefined;
+    vaultLabel = `TEMPO chain ${tempo.chainId}, vault ${tempo.depositAddress}, melt ${payout ? 'on' : 'OFF (no operator key)'}`;
   } else {
     fakeVault = new FakeVault();
     oracle = fakeVault;
+    payout = new FakePayout();
     vaultLabel = 'FAKE VAULT (dev)';
   }
 
-  const app = buildApp({ db, config, oracle, keyset, fakeVault });
+  const app = buildApp({ db, config, oracle, keyset, payout, fakeVault });
   serve({ fetch: app.fetch, port: config.port }, (info) => {
     console.log(`[mint] listening on :${info.port} — keyset ${keyset.id} (${keyset.unit}), ${vaultLabel}`);
   });

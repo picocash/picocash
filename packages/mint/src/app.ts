@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { MintContext } from './context.js';
 import { ApiError } from './errors.js';
 import { publicKeysJson } from './keyset.js';
+import { meltRoutes } from './routes/melt.js';
 import { mintRoutes } from './routes/mint.js';
 import { swapRoutes } from './routes/swap.js';
 import { amountSchema, checkstateRequestSchema, parseBody } from './validation.js';
@@ -39,6 +40,7 @@ export function buildApp(ctx: MintContext): Hono {
       unit: ctx.config.unit,
       keysets: [{ id: ctx.keyset.id, unit: ctx.keyset.unit, state: 'active' }],
       limits: { max_mint_amount: ctx.config.maxMintAmount },
+      melt: Boolean(ctx.payout),
       vault:
         ctx.config.vault === 'tempo' && ctx.config.tempo
           ? { method: 'tempo', chain_id: ctx.config.tempo.chainId, token: ctx.config.tempo.tokenAddress, deposit_address: ctx.config.tempo.depositAddress }
@@ -70,11 +72,7 @@ export function buildApp(ctx: MintContext): Hono {
     return c.json({ states: body.Ys.map((y) => ({ y, state: spentSet.has(y) ? 'SPENT' : 'UNSPENT' })) });
   });
 
-  const meltNotImplemented = () => {
-    throw new ApiError(501, 'NOT_IMPLEMENTED', 'melt requires the on-chain vault, which lands at build step 5', 'hold or swap tokens for now; melt will be announced in GET /v1/info');
-  };
-  app.post('/v1/melt/quote', meltNotImplemented);
-  app.post('/v1/melt', meltNotImplemented);
+  app.route('/v1/melt', meltRoutes(ctx));
 
   if (ctx.fakeVault) {
     const fakeVault = ctx.fakeVault;

@@ -96,9 +96,21 @@ Response `{ "signatures": [BlindSignature…] }`.
 
 Request `{ "Ys": ["02…", …] }` — `Y = hash_to_curve(secret)` values, never secrets. Response `{ "states": [ { "y": "02…", "state": "UNSPENT" | "SPENT" } ] }` (`PENDING` reserved for melt).
 
-### `POST /v1/melt/quote` · `POST /v1/melt`
+### `POST /v1/melt/quote` · `GET /v1/melt/quote/{id}` · `POST /v1/melt`
 
-`NOT_IMPLEMENTED` until the vault lands (build step 5); the error's `recovery` says exactly that.
+Melt burns proofs and pays out USDC.e from the vault.
+
+`POST /v1/melt/quote` request `{ "amount": 500000, "unit": "usdc.e-base", "to": "0x…" }` → response `{ "melt_id": "<32 bytes hex>", "amount", "unit", "to", "state": "UNPAID", "expires_at" }`. The melt id is 32 bytes and is passed on-chain as the vault's `bytes32 meltId` — the vault enforces **one payout per melt id, forever**.
+
+`POST /v1/melt` request `{ "melt_id": "…", "inputs": [Proof…] }`. Rules:
+
+- Every input verifies like a swap input; `sum(inputs) == amount` exactly (`AMOUNT_MISMATCH`; no fees in v0.1 — the payout gas is the operator's).
+- **Insert-before-pay**: input `Y`s enter the spent-secret ledger inside one DB transaction *before* any on-chain payout is attempted. A conflict aborts with `TOKEN_ALREADY_SPENT` and nothing is paid.
+- Then the mint calls `vault.withdraw(to, amount, meltId)` as operator. On success → `{ "state": "PAID", "tx_hash": "0x…" }`.
+- If the chain call fails, the melt is recorded as `OWED` (`PAYOUT_FAILED`, HTTP 502): the tokens are consumed and the debt is durable. **Retry by re-POSTing the same `melt_id` with the same inputs** — the mint verifies the input set matches (hash), skips re-spending, and re-attempts the payout. The vault's per-meltId guard makes double-payout impossible even across retries.
+- A `PAID` melt replayed with the same inputs returns the same result idempotently; different inputs → `MELT_ALREADY_PAID`.
+
+State machine: `UNPAID → PENDING → PAID`, with `OWED` as the retryable failure branch. `GET /v1/melt/quote/{id}` polls state.
 
 ## Fake vault (build step 4 only)
 

@@ -28,10 +28,10 @@ The core deliverable is [`spec/04-mpp-method.md`](spec/04-mpp-method.md): a `pic
 |---|---|---|
 | [`spec/`](spec/) | Protocol + MPP method spec + **test vectors** | crypto spec + vectors live; rest draft |
 | [`packages/crypto`](packages/crypto/) | BDHKE, hash-to-curve, DLEQ (secp256k1, `@noble/curves`) | **implemented, tested** |
-| [`packages/mint`](packages/mint/) | Mint server (TypeScript + Hono + Postgres) | **implemented vs. fake vault** — mint/swap/checkstate, double-spend race tests |
+| [`packages/mint`](packages/mint/) | Mint server (TypeScript + Hono + Postgres) | **live on Tempo testnet** — mint/swap/melt/checkstate against the deployed vault |
 | [`packages/sdk`](packages/sdk/) | Agent wallet-lite client | skeleton |
 | [`packages/mppx-method`](packages/mppx-method/) | MPP custom method implementation | skeleton |
-| [`contracts/`](contracts/) | Vault contract (Foundry, Tempo) | skeleton |
+| [picocash-contracts](https://github.com/picocash/picocash-contracts) | Vault contract (Foundry, Tempo) — separate repo | **deployed to Moderato testnet** |
 | [`apps/wallet-demo`](apps/wallet-demo/) | Static HTML wallet: mint / melt / transfer | **mint flow works on Tempo testnet** — $1 deposit → tokens, DLEQ verified in-browser |
 | [`apps/reference`](apps/reference/) | picocash.app reference mint deployment | skeleton |
 
