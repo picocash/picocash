@@ -1,0 +1,8 @@
+{
+  "name": "@picocash/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "description": "picocash agent wallet-lite client SDK — build step 6, not yet started",
+  "license": "Apache-2.0",
+  "type": "module"
+}

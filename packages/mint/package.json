@@ -1,0 +1,8 @@
+{
+  "name": "@picocash/mint",
+  "version": "0.0.0",
+  "private": true,
+  "description": "picocash mint server (Hono + Postgres) — build step 4, not yet started",
+  "license": "Apache-2.0",
+  "type": "module"
+}
