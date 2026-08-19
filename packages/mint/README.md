@@ -23,7 +23,7 @@ npm run dev                        # mint on :3338, watching TransferWithMemo ev
 npx tsx scripts/testnet-e2e.ts     # quote → real pathUSD transferWithMemo → mint → DLEQ verify → swap
 ```
 
-The deposit flow: the quote id is 32 bytes and doubles as the TIP-20 `bytes32` memo; the mint credits quotes from `TransferWithMemo(from, to, amount, memo)` events (memo is **indexed** on Tempo — a non-indexed ABI decodes it as undefined and deposits vanish, ask us how we know). Deposits currently go to the mint-operator address; the vault contract replaces that address in build step 5 without changing the API.
+The deposit flow: the quote id is 32 bytes and doubles as the TIP-20 `bytes32` memo; the mint credits quotes from `TransferWithMemo(from, to, amount, memo)` events (memo is **indexed** on Tempo — a non-indexed ABI decodes it as undefined and deposits vanish, ask us how we know). Deposits go to the vault contract, and at startup the mint verifies the whole chain binding: the unit's token address is a live TIP-20 and `vault.token()` matches it exactly, refusing to start otherwise. Note: `setup-testnet.ts` writes the operator EOA as the deposit address — deploy [PicocashVault](https://github.com/picocash/picocash-contracts) and point `PICOCASH_DEPOSIT_ADDRESS` at it for the full vault flow.
 
 **Against the fake vault** (no chain, no config):
 
@@ -33,15 +33,15 @@ npm run dev          # with no .env: fake vault + an INSECURE fixed dev seed
 
 ```sh
 # happy path against the dev server
-curl -s -X POST :3338/v1/mint/quote -d '{"amount":1000000,"unit":"usdc.e-base"}'
+curl -s -X POST :3338/v1/mint/quote -d '{"amount":1000000,"unit":"tip20:42431:0x20c0000000000000000000000000000000000000"}'
 curl -s -X POST :3338/dev/deposit   -d '{"quote_id":"<id>","amount":1000000}'   # fake the on-chain deposit
 curl -s -X POST :3338/v1/mint       -d '{"quote_id":"<id>","outputs":[...]}'    # blinded messages → signatures
 ```
 
 Config via env: `PICOCASH_MINT_SEED` (32-byte hex; encrypted at rest in real deployments, never in code or logs), `PICOCASH_OPERATOR_KEY` (signs `vault.withdraw` for melts; melt answers `NOT_IMPLEMENTED` without it), `PORT`, `DATABASE_URL`, `PICOCASH_MAX_MINT_AMOUNT`, `PICOCASH_QUOTE_TTL_SECONDS`.
 
-**Melt** (`POST /v1/melt/quote` → `POST /v1/melt`) burns proofs insert-before-pay and pays out through [`PicocashVault.withdraw`](https://github.com/picocash/picocash-contracts) — one payout per melt id enforced on-chain, so a failed payout (`OWED`) can be retried with the same inputs without double-pay risk. Deposits go to the vault contract (Moderato: `0x4336A5914BFF9912050c6518fbF46e599336D384`).
+**Melt** (`POST /v1/melt/quote` → `POST /v1/melt`) burns proofs insert-before-pay and pays out through [`PicocashVault.withdraw`](https://github.com/picocash/picocash-contracts) — one payout per melt id enforced on-chain, so a failed payout (`OWED`) can be retried with the same inputs without double-pay risk. Deposits go to the vault contract (Moderato: `0x8431C3ce797995B75d18c30cBe9a06B9F1D377B9`).
 
 ```sh
-npm test             # 11 tests incl. double-spend + concurrency races
+npm test             # 19 tests incl. double-spend + concurrency races and melt failure/retry
 ```

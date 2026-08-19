@@ -24,9 +24,14 @@ function deriveDenominationPrivkey(seed: Uint8Array, unit: string, denomination:
   }
 }
 
-/** Keyset id per spec/02: "00" + first 7 bytes of SHA256(pubkeys ascending by denomination). */
-export function computeKeysetId(pubkeysAscending: Uint8Array[]): string {
-  return '00' + bytesToHex(sha256(concatBytes(...pubkeysAscending))).slice(0, 14);
+/**
+ * Keyset id per spec/02: "00" + first 7 bytes of
+ * SHA256(pubkeys ascending by denomination || UTF-8(unit)).
+ * The unit (tip20:<chain_id>:<token>) is folded into the id so the id itself
+ * commits to the exact token contract and chain backing the keyset.
+ */
+export function computeKeysetId(pubkeysAscending: Uint8Array[], unit: string): string {
+  return '00' + bytesToHex(sha256(concatBytes(...pubkeysAscending, utf8ToBytes(unit)))).slice(0, 14);
 }
 
 export function deriveKeyset(seed: Uint8Array, unit: string, maxPow2 = 30): Keyset {
@@ -40,7 +45,7 @@ export function deriveKeyset(seed: Uint8Array, unit: string, maxPow2 = 30): Keys
     keys.set(denomination, { privkey, pubkey });
     pubkeys.push(pubkey);
   }
-  return { id: computeKeysetId(pubkeys), unit, keys };
+  return { id: computeKeysetId(pubkeys, unit), unit, keys };
 }
 
 /** JSON shape for /v1/keys: { "1": "02…", "2": "03…", … }. */

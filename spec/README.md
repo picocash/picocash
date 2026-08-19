@@ -5,10 +5,10 @@
 | Doc | Title | Status |
 |---|---|---|
 | [01-crypto.md](01-crypto.md) | Blind signatures, hash-to-curve, DLEQ | **v0.1** — implemented in `packages/crypto` |
-| [02-keysets.md](02-keysets.md) | Keysets, denominations, rotation | draft skeleton |
-| [03-mint-api.md](03-mint-api.md) | Mint HTTP API | draft skeleton |
+| [02-keysets.md](02-keysets.md) | Keysets, units (unit = TIP-20 contract), rotation | **v0.1-draft** — unit binding + derivation implemented; rotation lifecycle draft |
+| [03-mint-api.md](03-mint-api.md) | Mint HTTP API | **v0.1-draft** — fully implemented incl. melt, live on Tempo testnet |
 | [04-mpp-method.md](04-mpp-method.md) | **MPP payment method `picocash`** | **draft — the RFC centerpiece** |
-| [05-vault.md](05-vault.md) | Vault contract & proof of liabilities | draft skeleton |
+| [05-vault.md](05-vault.md) | Vault contract & proof of liabilities | **v0.1-draft** — implemented + deployed to Moderato ([picocash-contracts](https://github.com/picocash/picocash-contracts)) |
 | [vectors/](vectors/) | Test vectors | crypto v0.1 published |
 
 ## Conventions

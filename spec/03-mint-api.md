@@ -1,6 +1,6 @@
 # 03 — Mint HTTP API
 
-**Version: 0.1-draft** · Status: implemented in `packages/mint` for info/keys/mint/swap/checkstate (against a fake vault, build step 4); melt lands with the vault (build step 5).
+**Version: 0.1-draft** · Status: fully implemented in `packages/mint` — info/keys/mint/swap/checkstate/melt, running against the deployed vault on Tempo Moderato testnet (spec/05).
 
 Base path `/v1`, JSON bodies. All amounts are integer base units. Byte strings (secrets, points, `Y` values) are lowercase hex; points are 33-byte SEC1 compressed. Secrets are **raw bytes**, hex-encoded on the wire (a structured `PC-BIND` secret is the hex of its canonical-JSON UTF-8 bytes).
 
@@ -14,7 +14,7 @@ Every error is:
 { "error": { "code": "TOKEN_ALREADY_SPENT", "message": "…", "recovery": "…" } }
 ```
 
-`recovery` is mandatory and tells the calling agent what to do next (a9n9 convention). Codes used below: `INVALID_REQUEST`, `QUOTE_NOT_FOUND`, `QUOTE_EXPIRED`, `PAYMENT_REQUIRED`, `QUOTE_ALREADY_ISSUED`, `TOKEN_ALREADY_SPENT`, `OUTPUT_ALREADY_SIGNED`, `KEYSET_UNKNOWN`, `KEYSET_INACTIVE`, `AMOUNT_MISMATCH`, `INVALID_PROOF`, `AMOUNT_LIMIT`, `NOT_IMPLEMENTED`.
+`recovery` is mandatory and tells the calling agent what to do next (a9n9 convention). Codes used below: `INVALID_REQUEST`, `QUOTE_NOT_FOUND`, `QUOTE_EXPIRED`, `PAYMENT_REQUIRED`, `QUOTE_ALREADY_ISSUED`, `TOKEN_ALREADY_SPENT`, `OUTPUT_ALREADY_SIGNED`, `KEYSET_UNKNOWN`, `KEYSET_INACTIVE`, `AMOUNT_MISMATCH`, `INVALID_PROOF`, `AMOUNT_LIMIT`, `MELT_ALREADY_PAID`, `PAYOUT_FAILED`, `NOT_IMPLEMENTED`.
 
 ## Objects
 
@@ -39,7 +39,7 @@ DLEQ on issuance is REQUIRED (spec 01 §3).
 
 ### `GET /v1/info`
 
-Mint metadata: `name`, `version`, `unit`, `keysets` (ids + state), `limits` (`max_mint_amount`), `vault` (`"fake"` until step 5, then contract address), `contact`.
+Mint metadata: `name`, `version`, `unit`, `keysets` (ids + state), `limits` (`max_mint_amount`), `melt` (whether a payout executor is configured), `vault` (`{ method, chain_id, token, deposit_address }`, or `"fake"` in dev), `contact`.
 
 ### `GET /v1/keys` · `GET /v1/keys/{keyset_id}`
 
@@ -60,7 +60,7 @@ Request `{ "amount": 1000000, "unit": "tip20:42431:0x20c0...0000" }`. Response:
     "method": "tempo",                  // or "fake-vault" in dev
     "chain_id": 42431,
     "token": "0x20c0…0000",             // TIP-20 token contract
-    "to": "0x…",                        // deposit address (vault contract once it lands; mint-operator address until then)
+    "to": "0x…",                        // the vault contract (spec/05)
     "memo": "0x<quote_id>",
     "note": "call transferWithMemo(to, amount, memo) on the token contract; the memo binds the deposit to this quote"
   },
@@ -100,7 +100,7 @@ Request `{ "Ys": ["02…", …] }` — `Y = hash_to_curve(secret)` values, never
 
 ### `POST /v1/melt/quote` · `GET /v1/melt/quote/{id}` · `POST /v1/melt`
 
-Melt burns proofs and pays out USDC.e from the vault.
+Melt burns proofs and pays out the unit's TIP-20 token from the vault.
 
 `POST /v1/melt/quote` request `{ "amount": 500000, "unit": "tip20:42431:0x20c0...0000", "to": "0x…" }` → response `{ "melt_id": "<32 bytes hex>", "amount", "unit", "to", "state": "UNPAID", "expires_at" }`. The melt id is 32 bytes and is passed on-chain as the vault's `bytes32 meltId` — the vault enforces **one payout per melt id, forever**.
 
@@ -114,9 +114,9 @@ Melt burns proofs and pays out USDC.e from the vault.
 
 State machine: `UNPAID → PENDING → PAID`, with `OWED` as the retryable failure branch. `GET /v1/melt/quote/{id}` polls state.
 
-## Fake vault (build step 4 only)
+## Fake vault (dev mode)
 
-With `PICOCASH_FAKE_VAULT=1` the mint runs an in-memory deposit oracle and exposes `POST /dev/deposit { "quote_id", "amount" }` to simulate an on-chain deposit. The real vault watcher (step 5) implements the same oracle interface; the API above does not change.
+When `PICOCASH_VAULT` is not `tempo`, the mint runs an in-memory deposit oracle plus a fake payout executor, and exposes `POST /dev/deposit { "quote_id", "amount" }` to simulate an on-chain deposit. Same API, no chain — the real oracle and payout implement the same interfaces.
 
 ## Open questions for RFC
 

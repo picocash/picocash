@@ -33,10 +33,10 @@ where `d` is the denomination. The seed is the only secret; it MUST be stored en
 ## Keyset id
 
 ```
-id = "00" || first 7 bytes, hex, of SHA256( concat of 33-byte compressed pubkeys, ascending by denomination )
+id = "00" || first 7 bytes, hex, of SHA256( concat of 33-byte compressed pubkeys, ascending by denomination, || UTF-8(unit) )
 ```
 
-16 lowercase hex chars total; leading `"00"` is a version byte (NUT-02-style). *(Open question: adopt NUT-02 v2 id derivation — which also hashes unit and expiry — before freeze.)*
+16 lowercase hex chars total; leading `"00"` is a version byte (NUT-02-style). The unit string is folded into the hash, so the keyset id itself commits to the exact TIP-20 contract and chain backing it — two keysets over different tokens can never share an id even given identical keys. *(Open question narrowed: whether to also hash expiry, NUT-02-v2-style, before freeze.)*
 
 ## Rotation lifecycle (settled shape, details TBD)
 

@@ -1,6 +1,6 @@
 # 05 — Vault contract & proof of liabilities
 
-**Status: v0.1-draft, implemented** in [picocash/picocash-contracts](https://github.com/picocash/picocash-contracts) (`PicocashVault.sol`), built after the mint ran against a fake vault so the interface was dictated by a running consumer. Current Tempo **Moderato testnet** deployment: `0x4336A5914BFF9912050c6518fbF46e599336D384` (token pathUSD `0x20c0…0000`, 2-day rotation timelock).
+**Status: v0.1-draft, implemented** in [picocash/picocash-contracts](https://github.com/picocash/picocash-contracts) (`PicocashVault.sol`), built after the mint ran against a fake vault so the interface was dictated by a running consumer. Current Tempo **Moderato testnet** deployment: `0x8431C3ce797995B75d18c30cBe9a06B9F1D377B9` (token pathUSD `0x20c0…0000`, 2-day rotation timelock).
 
 **One vault per currency.** The vault is bound to exactly one TIP-20 token at deployment; `vault.token()` is the on-chain authority for the mint's unit binding (`tip20:<chain_id>:<token_address>`, spec/02), and the mint refuses to start if its configured unit disagrees. A mint supporting multiple currencies runs one vault per unit — solvency stays one number against one number, and a fault in one currency's custody cannot touch another's.
 

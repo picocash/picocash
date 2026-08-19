@@ -60,3 +60,6 @@ for (const [label, address] of [['operator', operator.address], ['payer', payer.
   }
 }
 console.log('done — start the mint with: npm run dev');
+console.log('note: PICOCASH_DEPOSIT_ADDRESS is the operator EOA for a quick start; for the full');
+console.log('vault flow, deploy PicocashVault (github.com/picocash/picocash-contracts) with this');
+console.log('operator and token, then set PICOCASH_DEPOSIT_ADDRESS to the vault address.');
