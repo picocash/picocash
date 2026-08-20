@@ -2,13 +2,13 @@
 
 > **Status: pre-alpha. The protocol spec is under RFC — design feedback welcome. Do not use with real funds.**
 
-**Private, instant, feeless bearer tokens for machine payments** — Chaumian ecash backed 1:1 by TIP-20 stablecoins (e.g. USDC.e) on [Tempo](https://tempo.xyz), designed as a custom payment method for [MPP](https://mpp.dev).
+**Private, instant bearer tokens for machine payments — no per-payment on-chain fee** — Chaumian ecash backed 1:1 by TIP-20 stablecoins (e.g. USDC.e) on [Tempo](https://tempo.xyz), designed as a custom payment method for [MPP](https://mpp.dev).
 
 ## The demo this project is built around
 
 An agent deposits **$1 of stablecoin once**, receives bearer tokens, then makes **20 paid API calls** with:
 
-- **sub-100ms payment acceptance** — the service verifies tokens *offline* (DLEQ proofs), then settles with the mint asynchronously. Accept-then-settle, no round-trip on the hot path. **Measured: ~45ms mean over 20 calls** in the [reference implementation's](packages/mppx-method/) end-to-end test.
+- **sub-100ms merchant-side verification** — the service verifies tokens *offline* (DLEQ proofs) with no mint round-trip. **Measured: ~45ms mean over 20 calls** in the [reference implementation's](packages/mppx-method/) end-to-end test — that is verification time on the service, not end-to-end latency. By default the MPP method then *settles at the mint before reporting success*; a service can opt into accept-then-settle and take on bounded double-spend exposure for lower latency.
 - **no on-chain transaction per call** — one deposit funds many payments; the mint nets out settlement on Tempo periodically.
 - **payer privacy** — the mint cannot link token issuance to redemption (blind signatures), and the service operator sees valid tokens, not a payer address.
 
@@ -26,22 +26,22 @@ The core deliverable is [`PIP-05`](https://github.com/picocash/pips/blob/main/PI
 
 | Path | What | Status |
 |---|---|---|
-| [pips](https://github.com/picocash/pips) | **The specifications (PIP-00…05) + test vectors** — separate repo, the RFC home | all under RFC |
+| [pips](https://github.com/picocash/pips) | **The specifications (PIP-00…07) + test vectors** — separate repo, the RFC home | all under RFC |
 | [`packages/crypto`](packages/crypto/) | BDHKE, hash-to-curve, DLEQ (secp256k1, `@noble/curves`) | **implemented, tested** |
 | [`packages/mint`](packages/mint/) | Mint server (TypeScript + Hono + Postgres) | **live on Tempo testnet** — mint/swap/melt/checkstate against the deployed vault |
 | [`packages/sdk`](packages/sdk/) | Agent wallet-lite client | **implemented** — mint/swap/melt/send/receive, offline verification |
-| [`packages/mppx-method`](packages/mppx-method/) | MPP method reference implementation | **implemented** — paid echo service e2e, **~45ms mean offline verification** |
+| [`packages/mppx-method`](packages/mppx-method/) | MPP method reference implementation | **implemented** — paid echo service e2e, **~45ms mean merchant-side offline verification** |
 | [picocash-contracts](https://github.com/picocash/picocash-contracts) | Vault contract (Foundry, Tempo) — separate repo | **deployed to Moderato testnet** |
 | [`apps/wallet-demo`](apps/wallet-demo/) | Static HTML wallet | **complete on Tempo testnet** — mint, offline-verified transfer, and melt in-browser |
 | [`apps/reference`](apps/reference/) | picocash.app reference mint deployment | skeleton |
 
 ## Test vectors
 
-[pips/vectors](https://github.com/picocash/pips/blob/main/../tree/main/vectors) publishes versioned test vectors for hash-to-curve, blind/unblind round-trips, and DLEQ proofs. The crypto constructions are **Cashu NUT-00/NUT-12 compatible** (same hash-to-curve domain separator, same DLEQ hash), verified against the upstream Cashu test vectors — a second implementation in any language should pass both sets. If you're implementing, start there.
+[pips/vectors](https://github.com/picocash/pips/tree/main/vectors) publishes versioned test vectors for hash-to-curve, blind/unblind round-trips, and DLEQ proofs. The crypto constructions are **Cashu NUT-00/NUT-12 compatible** (same hash-to-curve domain separator, same DLEQ hash), verified against the upstream Cashu test vectors — a second implementation in any language should pass both sets. If you're implementing, start there.
 
 ## Relationship to Cashu
 
-The blind-signature cryptography follows the [Cashu NUTs](https://github.com/cashubtc/nuts) (NUT-00 BDHKE, NUT-12 DLEQ) so the audit surface is shared. picocash diverges above the crypto layer: EVM/stablecoin-denominated with an on-chain vault on Tempo (not Lightning), on-chain proof-of-liabilities, and an MPP payment-method binding instead of Lightning invoices.
+The blind-signature cryptography follows the [Cashu NUTs](https://github.com/cashubtc/nuts) (NUT-00 BDHKE, NUT-12 DLEQ) so the audit surface is shared. picocash diverges above the crypto layer: EVM/stablecoin-denominated with an on-chain vault on Tempo (not Lightning), on-chain operator-attested liabilities (outstanding supply published by the mint, checkable against the vault balance), and an MPP payment-method binding instead of Lightning invoices.
 
 ## Contributing
 

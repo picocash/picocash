@@ -111,6 +111,13 @@ export function meltRoutes(ctx: MintContext): Hono {
       }
     }
 
+    // Crash recovery (PIP-03): if an earlier attempt landed on-chain but we
+    // never recorded it, the vault's meltPaid flag is the truth — mark PAID
+    // instead of re-paying (which the vault would revert anyway).
+    if (melt.state !== 'UNPAID' && (await executor.isPaid(melt.id).catch(() => false))) {
+      await ctx.db.query(`UPDATE melt_quotes SET state = 'PAID', tx_hash = COALESCE(tx_hash, 'paid-on-chain (tx hash not recorded)') WHERE id = $1`, [melt.id]);
+      return c.json(meltResponse(await fetchMelt(ctx, melt.id)));
+    }
     try {
       const txHash = await executor.execute(melt.to_address, Number(melt.amount), melt.id);
       await ctx.db.query(`UPDATE melt_quotes SET state = 'PAID', tx_hash = $2 WHERE id = $1`, [melt.id, txHash]);

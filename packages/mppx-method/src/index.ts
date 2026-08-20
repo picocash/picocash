@@ -1,4 +1,4 @@
-export { PicocashAcceptor, type AcceptorOptions } from './acceptor.js';
+export { PicocashAcceptor, MemoryAcceptorStore, type AcceptorOptions, type AcceptorStore, type ChallengeState } from './acceptor.js';
 export { payChallenge } from './agent.js';
 export {
   CredentialRejected,

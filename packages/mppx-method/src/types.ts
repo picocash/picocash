@@ -47,6 +47,8 @@ export class CredentialRejected extends Error {
       | 'CHALLENGE_EXPIRED'
       | 'CHALLENGE_ALREADY_PAID'
       | 'MINT_NOT_ALLOWED'
+      | 'UNIT_MISMATCH'
+      | 'DOUBLE_SPENT'
       | 'BINDING_INVALID'
       | 'AMOUNT_INVALID'
       | 'DLEQ_INVALID'

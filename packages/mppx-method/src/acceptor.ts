@@ -13,12 +13,58 @@ export interface AcceptorOptions {
   mints: TrustedMint[];
   challengeTtlSeconds?: number;
   maxAmount?: number;
+  /**
+   * Replay state. The default MemoryAcceptorStore is process-local and is
+   * ONLY safe for a single-instance service; any multi-instance deployment
+   * MUST supply a shared, transactional store (review P0-3).
+   */
+  store?: AcceptorStore;
 }
 
-interface ChallengeState {
+export interface ChallengeState {
   challenge: PicocashChallenge;
   credential?: PicocashCredential;
   receipt?: PicocashReceipt;
+}
+
+/**
+ * Durable replay state for an acceptor. Implementations MUST make `accept`
+ * atomic: the challenge is marked paid and every Y is recorded together, or
+ * nothing is — that is the single-use guarantee for multi-instance services.
+ */
+export interface AcceptorStore {
+  getChallenge(id: string): ChallengeState | undefined | Promise<ChallengeState | undefined>;
+  putChallenge(state: ChallengeState): void | Promise<void>;
+  hasAnyY(ys: string[]): boolean | Promise<boolean>;
+  /** Atomically record acceptance. Returns false if already paid or any Y was seen. */
+  accept(state: ChallengeState, ys: string[]): boolean | Promise<boolean>;
+}
+
+/** Bounded, TTL-evicting in-memory store — single instance / tests only. */
+export class MemoryAcceptorStore implements AcceptorStore {
+  private readonly challenges = new Map<string, ChallengeState>();
+  private readonly ys = new Map<string, number>(); // y → expiry
+  constructor(private readonly opts: { maxChallenges?: number; yTtlSeconds?: number } = {}) {}
+
+  private sweep(): void {
+    const now = Math.floor(Date.now() / 1000);
+    for (const [id, st] of this.challenges) if (st.challenge.expiry < now && !st.receipt) this.challenges.delete(id);
+    for (const [y, exp] of this.ys) if (exp < now) this.ys.delete(y);
+    const max = this.opts.maxChallenges ?? 10_000;
+    if (this.challenges.size > max) {
+      for (const id of [...this.challenges.keys()].slice(0, this.challenges.size - max)) this.challenges.delete(id);
+    }
+  }
+  getChallenge(id: string) { return this.challenges.get(id); }
+  putChallenge(state: ChallengeState) { this.sweep(); this.challenges.set(state.challenge.challenge_id, state); }
+  hasAnyY(ys: string[]) { return ys.some((y) => this.ys.has(y)); }
+  accept(state: ChallengeState, ys: string[]) {
+    if (this.challenges.get(state.challenge.challenge_id)?.receipt || this.hasAnyY(ys)) return false;
+    const exp = Math.floor(Date.now() / 1000) + (this.opts.yTtlSeconds ?? 86_400);
+    for (const y of ys) this.ys.set(y, exp);
+    this.challenges.set(state.challenge.challenge_id, state);
+    return true;
+  }
 }
 
 const nowSeconds = () => Math.floor(Date.now() / 1000);
@@ -34,9 +80,7 @@ export class PicocashAcceptor {
   private readonly mints: TrustedMint[];
   private readonly ttl: number;
   private readonly maxAmount: number;
-  private readonly challenges = new Map<string, ChallengeState>();
-  /** Y values of recently accepted proofs — cross-challenge duplicate guard. */
-  private readonly seenYs = new Set<string>();
+  private readonly store: AcceptorStore;
 
   constructor(options: AcceptorOptions) {
     if (options.mints.length === 0) throw new Error('acceptor needs at least one trusted mint');
@@ -44,6 +88,7 @@ export class PicocashAcceptor {
     this.mints = options.mints;
     this.ttl = options.challengeTtlSeconds ?? 300;
     this.maxAmount = options.maxAmount ?? 10_000_000;
+    this.store = options.store ?? new MemoryAcceptorStore();
   }
 
   createChallenge(amount: number): PicocashChallenge {
@@ -61,7 +106,7 @@ export class PicocashAcceptor {
       mints: this.mints.map((m) => ({ url: m.url, keyset_ids: [m.keyset.id] })),
       expiry: nowSeconds() + this.ttl,
     };
-    this.challenges.set(challenge.challenge_id, { challenge });
+    void this.store.putChallenge({ challenge });
     return challenge;
   }
 
@@ -75,18 +120,18 @@ export class PicocashAcceptor {
    * reconstructed challenge and the acceptor adopts it, keeping only the
    * single-use and duplicate-token state itself.
    */
-  verifyCredential(credential: PicocashCredential, externalChallenge?: PicocashChallenge): PicocashReceipt {
+  async verifyCredential(credential: PicocashCredential, externalChallenge?: PicocashChallenge): Promise<PicocashReceipt> {
     return this.process(credential, externalChallenge, true);
   }
 
   /** Non-mutating pre-check: runs every check, consumes nothing. */
-  precheckCredential(credential: PicocashCredential, externalChallenge?: PicocashChallenge): PicocashChallenge {
-    this.process(credential, externalChallenge, false);
-    return this.resolveChallenge(credential, externalChallenge).challenge;
+  async precheckCredential(credential: PicocashCredential, externalChallenge?: PicocashChallenge): Promise<PicocashChallenge> {
+    await this.process(credential, externalChallenge, false);
+    return (await this.resolveChallenge(credential, externalChallenge)).challenge;
   }
 
-  private resolveChallenge(credential: PicocashCredential, externalChallenge?: PicocashChallenge): ChallengeState {
-    let state = this.challenges.get(credential.challenge_id);
+  private async resolveChallenge(credential: PicocashCredential, externalChallenge?: PicocashChallenge): Promise<ChallengeState> {
+    let state = await this.store.getChallenge(credential.challenge_id);
     if (!state && externalChallenge && externalChallenge.challenge_id === credential.challenge_id) {
       state = { challenge: externalChallenge };
     }
@@ -94,9 +139,9 @@ export class PicocashAcceptor {
     return state;
   }
 
-  private process(credential: PicocashCredential, externalChallenge: PicocashChallenge | undefined, consume: boolean): PicocashReceipt {
+  private async process(credential: PicocashCredential, externalChallenge: PicocashChallenge | undefined, consume: boolean): Promise<PicocashReceipt> {
     // 1. challenge known, unexpired, never previously accepted
-    const state = this.resolveChallenge(credential, externalChallenge);
+    const state = await this.resolveChallenge(credential, externalChallenge);
     const { challenge } = state;
     if (state.receipt) throw new CredentialRejected('CHALLENGE_ALREADY_PAID', 'challenge is single-use and already paid');
     if (challenge.expiry < nowSeconds()) throw new CredentialRejected('CHALLENGE_EXPIRED', 'challenge expired; request a new one');
@@ -104,6 +149,11 @@ export class PicocashAcceptor {
     // 2. mint + keyset allowlisted
     const trusted = this.mints.find((m) => m.url === credential.mint && m.keyset.id === credential.keyset_id);
     if (!trusted) throw new CredentialRejected('MINT_NOT_ALLOWED', `mint ${credential.mint} / keyset ${credential.keyset_id} not in allowlist`);
+    // The keyset's unit MUST be the challenge's unit: a matching base-unit
+    // number in a different token is not payment (review P1-5).
+    if (trusted.keyset.unit.toLowerCase() !== challenge.unit.toLowerCase()) {
+      throw new CredentialRejected('UNIT_MISMATCH', `keyset ${trusted.keyset.id} is ${trusted.keyset.unit}; challenge requires ${challenge.unit}`);
+    }
 
     // 3. every secret commits to this challenge's nonce and realm
     for (const [i, proof] of credential.proofs.entries()) {
@@ -132,7 +182,7 @@ export class PicocashAcceptor {
 
     // 6. no duplicate Y within the credential or across recent acceptances
     const ys = credential.proofs.map((p) => yOfSecret(p.secret));
-    if (new Set(ys).size !== ys.length || ys.some((y) => this.seenYs.has(y))) {
+    if (new Set(ys).size !== ys.length || (await this.store.hasAnyY(ys))) {
       throw new CredentialRejected('DUPLICATE_TOKEN', 'a proof in this credential was already presented');
     }
 
@@ -145,10 +195,11 @@ export class PicocashAcceptor {
       checkstate_ref: null,
     };
     if (consume) {
-      for (const y of ys) this.seenYs.add(y);
-      state.credential = credential;
-      state.receipt = receipt;
-      this.challenges.set(challenge.challenge_id, state); // adopt external challenges
+      const next: ChallengeState = { challenge, credential, receipt };
+      // Atomic: challenge paid + Ys recorded together, or rejected as a race loser.
+      if (!(await this.store.accept(next, ys))) {
+        throw new CredentialRejected('CHALLENGE_ALREADY_PAID', 'challenge was accepted concurrently by another request');
+      }
     }
     return receipt;
   }
@@ -160,7 +211,7 @@ export class PicocashAcceptor {
    * recourse applies — PIP-05).
    */
   async settle(challengeId: string, wallet: Wallet): Promise<PicocashReceipt> {
-    const state = this.challenges.get(challengeId);
+    const state = await this.store.getChallenge(challengeId);
     if (!state?.receipt || !state.credential) throw new Error(`nothing to settle for ${challengeId}`);
     if (state.receipt.settlement !== 'pending') return state.receipt;
     try {
@@ -169,9 +220,11 @@ export class PicocashAcceptor {
         decompose(state.receipt.amount).map((amount) => ({ amount })),
       );
       state.receipt = { ...state.receipt, settlement: 'settled', checkstate_ref: fresh[0]?.keyset_id ?? null };
+      await this.store.putChallenge(state);
     } catch (err) {
       if (err instanceof MintApiError && err.code === 'TOKEN_ALREADY_SPENT') {
         state.receipt = { ...state.receipt, settlement: 'double-spent' };
+        await this.store.putChallenge(state);
       } else {
         throw err; // transient mint failure: stay pending, retry later
       }
@@ -179,7 +232,7 @@ export class PicocashAcceptor {
     return state.receipt;
   }
 
-  getReceipt(challengeId: string): PicocashReceipt | null {
-    return this.challenges.get(challengeId)?.receipt ?? null;
+  async getReceipt(challengeId: string): Promise<PicocashReceipt | null> {
+    return (await this.store.getChallenge(challengeId))?.receipt ?? null;
   }
 }

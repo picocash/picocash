@@ -1,3 +1,5 @@
+import { hmac } from '@noble/hashes/hmac';
+import { sha256 } from '@noble/hashes/sha2';
 import { hashToCurve } from './hashToCurve.js';
 import {
   bytesEqual,
@@ -24,14 +26,29 @@ export interface DleqProof {
   s: Uint8Array;
 }
 
-/** Mint side: prove C_ = k·B_ under K = k·G. Omit `nonce` for a fresh CSPRNG draw. */
+/**
+ * Deterministic proof nonce: HMAC-SHA256(key = privateKey, "picocash-dleq-nonce" || B_),
+ * reduced mod n. A biased or repeated `w` leaks the signing key (review P1-7);
+ * deriving it from the key and the message removes the RNG from that path,
+ * the way RFC 6979 does for ECDSA. Callers may still pass an explicit nonce
+ * (test vectors); it MUST be uniformly random and never reused.
+ */
+function deterministicNonce(privateKey: Uint8Array, B_: Uint8Array): Uint8Array {
+  const msg = new Uint8Array(DLEQ_NONCE_DOMAIN.length + B_.length);
+  msg.set(DLEQ_NONCE_DOMAIN, 0);
+  msg.set(B_, DLEQ_NONCE_DOMAIN.length);
+  return hmac(sha256, privateKey, msg);
+}
+const DLEQ_NONCE_DOMAIN = new TextEncoder().encode('picocash-dleq-nonce');
+
+/** Mint side: prove C_ = k·B_ under K = k·G. Omit `nonce` for a deterministic (RFC 6979-style) draw. */
 export function createDleqProof(
   B_: Uint8Array,
   privateKey: Uint8Array,
   nonce?: Uint8Array,
 ): DleqProof {
   const k = bytesToScalar(privateKey);
-  const w = bytesToScalar(nonce ?? randomScalarBytes());
+  const w = bytesToScalar(nonce ?? deterministicNonce(privateKey, B_));
   const Bp = parsePoint(B_);
   const R1 = mulBase(w);
   const R2 = Bp.multiply(w);

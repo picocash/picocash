@@ -1,5 +1,5 @@
 picocash — Architecture Plan
-Chaumian ecash for machine payments: private, instant, feeless bearer tokens backed 1:1 by USDC.e on Tempo, integrated with MPP (https://mpp.dev) as a custom payment method. Owner: Arun (solo). Domains: picocash.dev (docs/spec), picocash.app (reference mint). Sister project: agent-factory / a9n9.net, which becomes the first service to accept picocash.
+Chaumian ecash for machine payments: private, instant bearer tokens with no per-payment on-chain fee backed 1:1 by USDC.e on Tempo, integrated with MPP (https://mpp.dev) as a custom payment method. Owner: Arun (solo). Domains: picocash.dev (docs/spec), picocash.app (reference mint). Sister project: agent-factory / a9n9.net, which becomes the first service to accept picocash.
 Why this exists (settled strategy — don't relitigate)
 Tempo settlement is transparent; an agent's transaction graph is strategy leakage. picocash adds the privacy layer: the mint cannot link issuance to redemption (blind signatures), and service operators see valid tokens, not payer identity.
 Positioning to Stripe/Tempo: volume-ADDITIVE to MPP. Mint deposits and periodic net settlement still land on Tempo. picocash is a complement, not a competing rail.

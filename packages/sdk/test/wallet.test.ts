@@ -145,7 +145,7 @@ describe('token links (PIP-07)', () => {
     const { mint, wallet, proofs } = await fundedWallet(40);
     const { token } = await wallet.send(proofs, 9);
     const link = await wallet.createLink(token);
-    expect(link).toMatch(/^http:\/\/mint\.test\/t\/[A-Za-z0-9_-]{22}#[A-Za-z0-9_-]{43}$/);
+    expect(link).toMatch(/^https:\/\/mint\.test\/t\/[A-Za-z0-9_-]{22}#[A-Za-z0-9_-]{43}$/);
     expect(link.length).toBeLessThan(120);
 
     // what the relay stored is ciphertext, not the token
@@ -168,5 +168,27 @@ describe('token links (PIP-07)', () => {
     const wrongKey = link.replace(/#.*$/, '#' + 'A'.repeat(43));
     await expect(wallet.receive(wrongKey)).rejects.toThrow(/could not be decrypted/);
     await expect(createTokenLink('x'.repeat(20_000), wallet.mintUrl, (wallet as any).fetchImpl)).rejects.toThrow(/PAYLOAD_TOO_LARGE/);
+  });
+});
+
+describe('token parse limits and link policy (review P2-1/P2-2)', () => {
+  it('rejects oversize, over-count, and malformed-unit tokens', async () => {
+    const { parseToken, serializeToken, TOKEN_LIMITS, parseTokenLink } = await import('../src/index.js');
+    expect(() => parseToken('x'.repeat(TOKEN_LIMITS.maxChars + 1))).toThrow(/exceeds/);
+    const proof = { amount: 1, keyset_id: '00deadbeefcafe00', secret: 'ab'.repeat(32), C: '02' + 'ab'.repeat(32), dleq: { e: 'ab'.repeat(32), s: 'ab'.repeat(32), r: 'ab'.repeat(32) } };
+    const many = serializeToken({ mint: 'https://m.example', unit: 'tip20:1:0x' + '11'.repeat(20), keyset_id: proof.keyset_id, proofs: Array(TOKEN_LIMITS.maxProofs + 1).fill(proof) });
+    expect(() => parseToken(many)).toThrow(/proofs/);
+    const badUnit = serializeToken({ mint: 'https://m.example', unit: 'usd', keyset_id: proof.keyset_id, proofs: [proof] });
+    expect(() => parseToken(badUnit)).toThrow(/tip20/);
+    const badMint = serializeToken({ mint: 'javascript:alert(1)', unit: 'tip20:1:0x' + '11'.repeat(20), keyset_id: proof.keyset_id, proofs: [proof] });
+    expect(() => parseToken(badMint)).toThrow(/http/);
+  });
+
+  it('only accepts https links (localhost exempt)', async () => {
+    const { parseTokenLink } = await import('../src/index.js');
+    const id = 'A'.repeat(22), key = 'B'.repeat(43);
+    expect(parseTokenLink(`https://mint.example/t/${id}#${key}`)).not.toBeNull();
+    expect(parseTokenLink(`http://localhost:3338/t/${id}#${key}`)).not.toBeNull();
+    expect(parseTokenLink(`http://mint.example/t/${id}#${key}`)).toBeNull();
   });
 });

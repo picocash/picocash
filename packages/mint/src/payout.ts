@@ -10,9 +10,11 @@ import type { TempoConfig } from './config.js';
 export interface PayoutExecutor {
   /** Returns the settlement tx reference. MUST throw if the payout did not land. */
   execute(to: string, amount: number, meltId: string): Promise<string>;
+  /** On-chain truth for crash recovery: has this melt id already been paid out? */
+  isPaid(meltId: string): Promise<boolean>;
 }
 
-const vaultAbi = parseAbi(['function ecashMelt(address to, uint256 amount, bytes32 meltId)']);
+const vaultAbi = parseAbi(['function ecashMelt(address to, uint256 amount, bytes32 meltId)', 'function meltPaid(bytes32) view returns (bool)']);
 
 export class TempoPayout implements PayoutExecutor {
   private readonly wallet;
@@ -32,6 +34,10 @@ export class TempoPayout implements PayoutExecutor {
     this.publicClient = createPublicClient({ chain, transport: http() });
   }
 
+  async isPaid(meltId: string): Promise<boolean> {
+    return this.publicClient.readContract({ address: this.vaultAddress, abi: vaultAbi, functionName: 'meltPaid', args: [`0x${meltId}` as `0x${string}`] });
+  }
+
   async execute(to: string, amount: number, meltId: string): Promise<string> {
     const hash = await this.wallet.writeContract({
       address: this.vaultAddress,
@@ -47,14 +53,28 @@ export class TempoPayout implements PayoutExecutor {
 
 export class FakePayout implements PayoutExecutor {
   readonly calls: Array<{ to: string; amount: number; meltId: string }> = [];
+  readonly paid = new Set<string>();
   failNext = false;
+  /** Simulate "chain success, response lost": mark paid but throw. */
+  landButFailNext = false;
   private counter = 0;
+
+  async isPaid(meltId: string): Promise<boolean> {
+    return this.paid.has(meltId);
+  }
 
   async execute(to: string, amount: number, meltId: string): Promise<string> {
     if (this.failNext) {
       this.failNext = false;
       throw new Error('fake payout failure (test-injected)');
     }
+    if (this.landButFailNext) {
+      this.landButFailNext = false;
+      this.paid.add(meltId);
+      this.calls.push({ to, amount, meltId });
+      throw new Error('fake: tx landed but the response was lost');
+    }
+    this.paid.add(meltId);
     this.calls.push({ to, amount, meltId });
     return `fake-payout-${++this.counter}`;
   }

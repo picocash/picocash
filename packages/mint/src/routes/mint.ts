@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import type { MintContext } from '../context.js';
 import { ApiError } from '../errors.js';
 import { loadIssuedSignatures, signAndRecord, sumAmounts, validateOutputs } from '../signing.js';
-import { computeOutstanding } from '../solvency.js';
+import { computeOutstanding, computeReserved } from '../solvency.js';
 import { mintQuoteRequestSchema, mintRequestSchema, parseBody } from '../validation.js';
 
 interface QuoteRow {
@@ -80,11 +80,13 @@ export function mintRoutes(ctx: MintContext): Hono {
     if (await ctx.oracle.isPublicationOverdue?.()) {
       throw new ApiError(503, 'ATTESTATION_OVERDUE', 'this mint’s solvency attestation is overdue; new quotes are suspended', 'the operator must publish outstanding supply (see GET /v1/solvency and the vault’s publication policy); retry afterwards');
     }
-    // Reference-mint hard cap: global outstanding supply (showcase, not a bank).
+    // Reference-mint hard cap: outstanding + reserved (unexpired, not-yet-issued
+    // quotes) + this request must fit. Rechecked again at issuance.
     if (ctx.config.maxOutstanding > 0) {
       const outstanding = await computeOutstanding(ctx.db, ctx.keyset.id);
-      if (outstanding + body.amount > ctx.config.maxOutstanding) {
-        throw new ApiError(400, 'AMOUNT_LIMIT', `this mint caps outstanding supply at ${ctx.config.maxOutstanding} (currently ${outstanding})`, 'melt some tokens first, request a smaller amount, or use another mint; see GET /v1/solvency');
+      const reserved = await computeReserved(ctx.db, nowSeconds());
+      if (outstanding + reserved + body.amount > ctx.config.maxOutstanding) {
+        throw new ApiError(400, 'AMOUNT_LIMIT', `this mint caps outstanding supply at ${ctx.config.maxOutstanding} (outstanding ${outstanding}, reserved by open quotes ${reserved})`, 'wait for open quotes to expire, melt some tokens, request a smaller amount, or use another mint; see GET /v1/solvency');
       }
     }
     const id = randomBytes(32).toString('hex'); // 32 bytes: fits a TIP-20 bytes32 memo exactly
@@ -132,6 +134,14 @@ export function mintRoutes(ctx: MintContext): Hono {
       }
       if (state !== 'PAID') {
         throw new ApiError(402, 'PAYMENT_REQUIRED', `quote ${quote.id} is not paid`, `poll GET /v1/mint/quote/${quote.id} until state is PAID, then retry`);
+      }
+      // The cap is enforced under the same serialized transaction that issues:
+      // quote-time checks are advisory, this one is binding.
+      if (ctx.config.maxOutstanding > 0) {
+        const outstanding = await computeOutstanding(q, ctx.keyset.id);
+        if (outstanding + Number(quote.amount) > ctx.config.maxOutstanding) {
+          throw new ApiError(409, 'AMOUNT_LIMIT', `issuing ${quote.amount} would exceed the outstanding cap (${outstanding} + ${quote.amount} > ${ctx.config.maxOutstanding})`, 'the deposit is held against this quote; retry after supply frees up (melts) or contact the operator for a refund');
+        }
       }
       const signed = [];
       for (const output of body.outputs) signed.push(await signAndRecord(q, ctx.keyset, output, quote.id));

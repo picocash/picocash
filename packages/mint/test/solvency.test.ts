@@ -56,3 +56,32 @@ describe('solvency', () => {
     expect(under.status).toBe(200);
   });
 });
+
+describe('outstanding cap — reservation (review P0-4)', () => {
+  it('counts open quotes against the cap so a quote flood cannot bypass it', async () => {
+    const mint = await makeMint();
+    mint.config.maxOutstanding = 100;
+    // open quotes totalling 90 while nothing is issued yet
+    for (let i = 0; i < 3; i++) expect((await mint.post('/v1/mint/quote', { amount: 30, unit: mint.config.unit })).status).toBe(200);
+    const over = await mint.post('/v1/mint/quote', { amount: 20, unit: mint.config.unit });
+    expect(over.status).toBe(400);
+    expect(over.body.error.message).toContain('reserved by open quotes 90');
+    expect((await mint.post('/v1/mint/quote', { amount: 10, unit: mint.config.unit })).status).toBe(200);
+  });
+
+  it('re-enforces the cap at issuance time under the transaction', async () => {
+    const mint = await makeMint();
+    mint.config.maxOutstanding = 0; // uncapped while quotes are created...
+    const q1 = await mint.post('/v1/mint/quote', { amount: 64, unit: mint.config.unit });
+    const q2 = await mint.post('/v1/mint/quote', { amount: 64, unit: mint.config.unit });
+    await mint.post('/dev/deposit', { quote_id: q1.body.quote_id, amount: 64 });
+    await mint.post('/dev/deposit', { quote_id: q2.body.quote_id, amount: 64 });
+    mint.config.maxOutstanding = 100; // ...then the cap drops; only one can issue
+    const first = await mint.post('/v1/mint', { quote_id: q1.body.quote_id, outputs: makeOutputs(mint.keyset.id, [64]).outputs });
+    expect(first.status).toBe(200);
+    const second = await mint.post('/v1/mint', { quote_id: q2.body.quote_id, outputs: makeOutputs(mint.keyset.id, [64]).outputs });
+    expect(second.status).toBe(409);
+    expect(second.body.error.code).toBe('AMOUNT_LIMIT');
+    expect(await computeOutstanding(mint.db, mint.keyset.id)).toBe(64);
+  });
+});

@@ -12,7 +12,7 @@ import {
 } from '@picocash/mint';
 import { Wallet, type Proof } from '@picocash/sdk';
 
-export const TEST_MINT_URL = 'http://mint.test';
+export const TEST_MINT_URL = 'https://mint.test';
 
 export async function makeTestMint() {
   const db = createPgliteDb();

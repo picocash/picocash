@@ -118,3 +118,23 @@ describe('melt', () => {
     expect(Number((spent.rows[0] as any).n)).toBe(1);
   });
 });
+
+describe('melt crash recovery (review P1-3)', () => {
+  it('recovers a payout that landed on-chain but whose response was lost', async () => {
+    const mint = await makeMint();
+    const proofs = await mintTokens(mint, 4);
+    const quote = await mint.post('/v1/melt/quote', { amount: 4, unit: mint.config.unit, to: PAYOUT_ADDR });
+
+    mint.payout.landButFailNext = true; // tx succeeds on-chain, mint never hears back
+    const failed = await mint.post('/v1/melt', { melt_id: quote.body.melt_id, inputs: proofs });
+    expect(failed.status).toBe(502);
+    expect((await mint.get(`/v1/melt/quote/${quote.body.melt_id}`)).body.state).toBe('OWED');
+
+    // retry: the vault's meltPaid flag is the truth — mark PAID, do NOT pay again
+    const retried = await mint.post('/v1/melt', { melt_id: quote.body.melt_id, inputs: proofs });
+    expect(retried.status).toBe(200);
+    expect(retried.body.state).toBe('PAID');
+    expect(retried.body.tx_hash).toContain('paid-on-chain');
+    expect(mint.payout.calls).toHaveLength(1); // exactly one payout ever
+  });
+});

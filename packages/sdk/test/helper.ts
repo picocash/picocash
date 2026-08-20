@@ -11,7 +11,7 @@ import {
   type MintConfig,
 } from '@picocash/mint';
 
-export const TEST_MINT_URL = 'http://mint.test';
+export const TEST_MINT_URL = 'https://mint.test';
 
 /** In-process mint + a fetch bridge, so SDK tests need no HTTP or chain. */
 export async function makeTestMint() {

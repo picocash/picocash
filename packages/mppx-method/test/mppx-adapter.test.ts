@@ -34,8 +34,11 @@ async function makeMppxScene(fundAmount: number, price: number) {
       stored = change;
     },
   });
-  const serverMethod = picocashCharge({ acceptor });
-  return { mint, wallet, keyset, acceptor, challenge, clientMethod, serverMethod, held: () => stored };
+  const serviceWallet = new Wallet({ mintUrl: TEST_MINT_URL, fetchImpl: mint.fetchImpl });
+  // default mode: settle-first
+  const serverMethod = picocashCharge({ acceptor, wallet: serviceWallet });
+  const deferredMethod = picocashCharge({ acceptor, mode: 'accept-then-settle' });
+  return { mint, wallet, keyset, acceptor, challenge, clientMethod, serverMethod, deferredMethod, serviceWallet, held: () => stored };
 }
 
 describe('mppx adapter', () => {
@@ -53,11 +56,11 @@ describe('mppx adapter', () => {
     expect((first.details as any).offline).toBe(true);
     expect(second.method).toBe('picocash');
 
-    // broadcast is terminal
+    // broadcast is terminal and, by default, settled at the mint before `success`
     const receipt = await Method.broadcastCredential([scene.serverMethod], header);
     expect(receipt.status).toBe('success');
     expect(receipt.reference).toBe(scene.challenge.id);
-    expect((receipt as any).settlement).toBe('pending');
+    expect((receipt as any).settlement).toBe('settled');
 
     // replay: both validate and broadcast now refuse
     await expect(Method.broadcastCredential([scene.serverMethod], header)).rejects.toThrow(/single-use/);
@@ -82,13 +85,23 @@ describe('mppx adapter', () => {
     await expect(Method.broadcastCredential([scene.serverMethod], grafted)).rejects.toThrow(/PC-BIND/);
   });
 
-  it('settles the accepted payment at the mint afterwards', async () => {
+  it('accept-then-settle (opt-in) returns pending, settles afterwards', async () => {
     const scene = await makeMppxScene(64, 64);
     const header = await scene.clientMethod.createCredential({ challenge: scene.challenge as never });
-    await Method.broadcastCredential([scene.serverMethod], header);
+    const receipt = await Method.broadcastCredential([scene.deferredMethod], header);
+    expect((receipt as any).settlement).toBe('pending');
 
-    const serviceWallet = new Wallet({ mintUrl: TEST_MINT_URL, fetchImpl: scene.mint.fetchImpl });
-    const receipt = await scene.acceptor.settle(scene.challenge.id, serviceWallet);
-    expect(receipt.settlement).toBe('settled');
+    const settled = await scene.acceptor.settle(scene.challenge.id, scene.serviceWallet);
+    expect(settled.settlement).toBe('settled');
+  });
+
+  it('settle-first: a double-spent credential never yields success (review P0-2)', async () => {
+    const scene = await makeMppxScene(64, 64);
+    const header = await scene.clientMethod.createCredential({ challenge: scene.challenge as never });
+    // the payer races to re-swap the same proofs at the mint before the service sees them
+    const { payload } = Credential.deserialize(header) as any;
+    await scene.wallet.swap(payload.proofs, payload.proofs.map((p: Proof) => ({ amount: p.amount })));
+    await expect(Method.broadcastCredential([scene.serverMethod], header)).rejects.toThrow(/already spent/);
+    expect((await scene.acceptor.getReceipt(scene.challenge.id))?.settlement).toBe('double-spent');
   });
 });

@@ -4,8 +4,11 @@
  * mppx owns the envelope: it issues HMAC-bound challenges, moves credentials
  * in the `Authorization: Payment …` header, and drives the validate/broadcast
  * split. This adapter maps that onto the acceptor: `validate` is the
- * non-mutating offline pre-check, `broadcast` is the terminal offline accept
- * (still no mint round-trip — settlement stays async via acceptor.settle()).
+ * non-mutating offline pre-check; `broadcast` accepts offline and then, by
+ * default, SETTLES at the mint before returning `success` (settle-first). A
+ * service that explicitly prefers lower latency over finality can opt into
+ * accept-then-settle, where `success` means "offline-accepted, settlement
+ * pending" and the double-spend exposure is the service's (review P0-2).
  *
  * Import from '@picocash/mppx-method/mppx'; requires the `mppx` peer.
  */
@@ -14,7 +17,7 @@ import { randomSecretHex, sumProofs, type Proof, type Wallet } from '@picocash/s
 import { z } from 'zod/mini';
 import { payChallenge } from './agent.js';
 import type { PicocashAcceptor } from './acceptor.js';
-import type { PicocashChallenge, PicocashCredential, PicocashReceipt } from './types.js';
+import { CredentialRejected, type PicocashChallenge, type PicocashCredential, type PicocashReceipt } from './types.js';
 
 const proofSchema = z.object({
   amount: z.number(),
@@ -97,19 +100,40 @@ export function picocash(options: PicocashClientOptions) {
   });
 }
 
-export interface PicocashChargeOptions {
-  acceptor: PicocashAcceptor;
-  /** Called after a terminal accept, e.g. to schedule acceptor.settle(). */
-  onAccepted?: (receipt: PicocashReceipt) => void;
-}
+export type PicocashChargeOptions =
+  | {
+      acceptor: PicocashAcceptor;
+      /**
+       * Default: settle at the mint inside `broadcast`. `success` is only
+       * returned once the proofs are swapped for service-owned ones; a
+       * double-spend surfaces as a thrown CredentialRejected('DOUBLE_SPENT').
+       */
+      mode?: 'settle-first';
+      /** The service wallet that receives the swapped proofs. */
+      wallet: Wallet;
+      onAccepted?: (receipt: PicocashReceipt) => void;
+    }
+  | {
+      acceptor: PicocashAcceptor;
+      /**
+       * Opt-in: return `success` after the offline checks, with
+       * `settlement: 'pending'`. The service MUST schedule acceptor.settle()
+       * (e.g. in `onAccepted`) and accepts amount × settlement-lag exposure.
+       */
+      mode: 'accept-then-settle';
+      wallet?: Wallet;
+      /** Called after the offline accept — schedule acceptor.settle() here. */
+      onAccepted?: (receipt: PicocashReceipt) => void;
+    };
 
-/** Server-side method: validate = offline pre-check, broadcast = terminal offline accept. */
+/** Server-side method: validate = offline pre-check, broadcast = accept (+ settle by default). */
 export function picocashCharge(options: PicocashChargeOptions) {
+  const mode = options.mode ?? 'settle-first';
   return Method.toServer(picocashMethod, {
     async validate({ credential, request }) {
       const challenge = credential.challenge as MppxChallenge;
       const pc = toPicocashChallenge(challenge);
-      options.acceptor.precheckCredential(toPicocashCredential(challenge.id, credential.payload), pc);
+      await options.acceptor.precheckCredential(toPicocashCredential(challenge.id, credential.payload), pc);
       return {
         challenge,
         credential,
@@ -122,7 +146,13 @@ export function picocashCharge(options: PicocashChargeOptions) {
     async broadcast({ credential }) {
       const challenge = credential.challenge as MppxChallenge;
       const pc = toPicocashChallenge(challenge);
-      const receipt = options.acceptor.verifyCredential(toPicocashCredential(challenge.id, credential.payload), pc);
+      let receipt = await options.acceptor.verifyCredential(toPicocashCredential(challenge.id, credential.payload), pc);
+      if (mode === 'settle-first') {
+        receipt = await options.acceptor.settle(receipt.challenge_id, options.wallet!);
+        if (receipt.settlement === 'double-spent') {
+          throw new CredentialRejected('DOUBLE_SPENT', 'proofs were already spent at the mint');
+        }
+      }
       options.onAccepted?.(receipt);
       return {
         method: 'picocash',

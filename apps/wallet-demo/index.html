@@ -66,7 +66,7 @@
       <code>transferWithMemo</code> (memo = quote id), then blinds, mints, and DLEQ-verifies your tokens.
     </p>
     <label>Testnet private key (0x…, pays the $1 — testnet only, never leaves this page)</label>
-    <input id="payerKey" type="password" placeholder="0x…">
+    <input id="payerKey" type="password" placeholder="0x… (TESTNET-ONLY throwaway key — never a real one)" autocomplete="off">
     <button id="mintKeyBtn" disabled>Pay with key &amp; mint</button>
     <button id="mintWalletBtn" class="secondary" disabled>Pay with browser wallet</button>
     <div id="quoteInfo"></div>
@@ -162,6 +162,17 @@ function verifyDleqOffline(proof, K_hex) {
 
 // ---- state -----------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
+
+// ---- safe DOM rendering: mint-supplied strings are DATA, never markup (review P0-1)
+function el(tag, attrs, ...children) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs ?? {})) { if (k === 'class') n.className = v; else n.setAttribute(k, v); }
+  for (const c of children) n.append(c);
+  return n;
+}
+const b = (text) => el('b', {}, String(text));
+const kv = (...parts) => el('div', { class: 'kv' }, ...parts.map((p) => (p instanceof Node ? p : String(p))));
+const show = (id, ...nodes) => $(id).replaceChildren(...nodes);
 const AMOUNT = 1_000_000; // $1 in 6-decimal base units
 let mint = null;          // { url, unit, keyset:{id, keys} }
 let tokens = JSON.parse(localStorage.getItem('picocash.demo.tokens') ?? '[]');
@@ -190,10 +201,11 @@ function render() {
   $('balance').textContent = (live.reduce((s, t) => s + t.amount, 0) / 1e6).toFixed(6);
   $('checkBtn').disabled = !mint || tokens.length === 0;
   $('exportBox').value = JSON.stringify(tokens, null, 1);
-  if (!tokens.length) { $('tokenTable').innerHTML = ''; return; }
-  const rows = tokens.map((t) =>
-    `<tr class="${t.spent ? 'spent' : ''}"><td>${(t.amount / 1e6).toFixed(6)}</td><td>${t.keyset_id}</td><td>${t.C.slice(0, 18)}…</td><td>${t.spent ? 'SPENT' : 'ok'}</td></tr>`).join('');
-  $('tokenTable').innerHTML = `<table><tr><th>amount $</th><th>keyset</th><th>C</th><th>state</th></tr>${rows}</table>`;
+  if (!tokens.length) { show('tokenTable'); return; }
+  const head = el('tr', {}, ...['amount $', 'keyset', 'C', 'state'].map((h) => el('th', {}, h)));
+  const rows = tokens.map((t) => el('tr', { class: t.spent ? 'spent' : '' },
+    el('td', {}, (t.amount / 1e6).toFixed(6)), el('td', {}, t.keyset_id), el('td', {}, `${t.C.slice(0, 18)}…`), el('td', {}, t.spent ? 'SPENT' : 'ok')));
+  show('tokenTable', el('table', {}, head, ...rows));
 }
 
 // ---- connect ---------------------------------------------------------------
@@ -206,10 +218,10 @@ $('connectBtn').onclick = async () => {
     mint.unit = info.unit; mint.keyset = keyset; mint.vault = info.vault;
     mint.meltFee = Number(info.fees?.melt ?? 0);
     mint.relay = Boolean(info.relay?.enabled);
-    $('mintInfo').innerHTML = `
-      <div class="kv"><b>${info.name}</b> · ${info.version}</div>
-      <div class="kv">keyset <b>${keyset.id}</b> · unit ${info.unit}</div>
-      <div class="kv">vault ${typeof info.vault === 'object' ? `tempo chain <b>${info.vault.chain_id}</b> · token ${info.vault.token}` : info.vault}</div>`;
+    show('mintInfo',
+      kv(b(info.name), ` · ${info.version}`),
+      kv('keyset ', b(keyset.id), ` · unit ${info.unit}`),
+      typeof info.vault === 'object' ? kv('vault tempo chain ', b(info.vault.chain_id), ` · token ${info.vault.token}`) : kv(`vault ${info.vault}`));
     $('mintKeyBtn').disabled = false;
     $('mintWalletBtn').disabled = typeof info.vault !== 'object';
     $('sendBtn').disabled = $('recvBtn').disabled = false;
@@ -231,10 +243,10 @@ function decompose(amount) {
 
 async function payAndMint(sendPayment) {
   const quote = await api('POST', '/v1/mint/quote', { amount: AMOUNT, unit: mint.unit });
-  $('quoteInfo').innerHTML = `
-    <div class="kv">quote <b>${quote.quote_id.slice(0, 16)}…</b></div>
-    <div class="kv">deposit ${(quote.amount / 1e6).toFixed(6)} to <b>${quote.deposit.to}</b></div>
-    <div class="kv">memo <b>${quote.deposit.memo}</b></div>`;
+  show('quoteInfo',
+    kv('quote ', b(`${quote.quote_id.slice(0, 16)}…`)),
+    kv(`deposit ${(quote.amount / 1e6).toFixed(6)} to `, b(quote.deposit.to)),
+    kv('memo ', b(quote.deposit.memo)));
   log(`quote ${quote.quote_id.slice(0, 16)}… for $${(AMOUNT / 1e6).toFixed(2)}`);
 
   const txHash = await sendPayment(quote);
@@ -475,7 +487,7 @@ $('meltBtn').onclick = async () => {
       melt_id: quote.melt_id,
       inputs: proofs.map((t) => ({ amount: t.amount, keyset_id: t.keyset_id, secret: t.secret, C: t.C })),
     });
-    $('meltInfo').innerHTML = `<div class="kv">melt <b>${melted.state}</b> — tx <b>${melted.tx_hash ?? '(pending)'}</b></div>`;
+    show('meltInfo', kv('melt ', b(melted.state), ' — tx ', b(melted.tx_hash ?? '(pending)')));
     log(`melt ${melted.state}: $${(amount / 1e6).toFixed(6)} paid to ${to} (tx ${melted.tx_hash})`, 'ok');
   } catch (err) { log(err.message, 'err'); }
   $('meltBtn').disabled = false;

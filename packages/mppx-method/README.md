@@ -14,7 +14,7 @@ await acceptor.settle(challenge.challenge_id, serviceWallet); // async: swap at 
 const { credential, change } = await payChallenge(wallet, proofs, challenge);
 ```
 
-Measured in the test suite: **one $1 deposit funds 20 paid calls with mean offline verification of ~45ms** (max 48ms) — the sub-100ms path is real, not aspirational. Verification runs the six PIP-05 checks in order (challenge single-use → mint allowlist → `PC-BIND` challenge binding → exact amount/denominations → DLEQ per proof → duplicate-`Y` guard) and rejects with a typed `CredentialRejected` naming the failed check.
+Measured in the test suite: **one $1 deposit funds 20 paid calls with mean merchant-side offline verification of ~45ms** (max 48ms). That number is the service's verification step, not end-to-end payment latency. The mppx `charge` binding is **settle-first by default** — `success` is returned only after the proofs are swapped at the mint — and `mode: 'accept-then-settle'` is an explicit opt-in that returns `settlement: 'pending'` and leaves the double-spend exposure (amount × settlement lag) with the service. Verification runs the six PIP-05 checks in order (challenge single-use → mint allowlist → `PC-BIND` challenge binding → exact amount/denominations → DLEQ per proof → duplicate-`Y` guard) and rejects with a typed `CredentialRejected` naming the failed check.
 
 The double-spend exposure of accept-then-settle is bounded and tested: a payer who re-swaps their bound proofs before settlement produces a `double-spent` receipt at settle time — recourse is service-level, and per-call amounts keep the window small.
 

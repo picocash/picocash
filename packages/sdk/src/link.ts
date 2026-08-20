@@ -49,6 +49,11 @@ export async function decryptToken(ct: string, keyB64: string): Promise<string> 
   return token;
 }
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+export function isAllowedRelayUrl(url: URL): boolean {
+  return url.protocol === 'https:' || (url.protocol === 'http:' && LOCAL_HOSTS.has(url.hostname));
+}
+
 export interface ParsedLink {
   origin: string;
   id: string;
@@ -63,6 +68,8 @@ export function parseTokenLink(input: string): ParsedLink | null {
   } catch {
     return null;
   }
+  // The key travels in the fragment: only https (or a local dev relay) may carry it.
+  if (!isAllowedRelayUrl(url)) return null;
   const m = url.pathname.match(/^\/t\/([A-Za-z0-9_-]{22})$/);
   const key = url.hash.replace(/^#/, '');
   if (!m || !/^[A-Za-z0-9_-]{43}$/.test(key)) return null;
@@ -71,6 +78,8 @@ export function parseTokenLink(input: string): ParsedLink | null {
 
 /** Upload an encrypted token to a relay and return the shareable link. */
 export async function createTokenLink(token: string, relayOrigin: string, fetchImpl: typeof fetch = fetch): Promise<string> {
+  const origin = new URL(relayOrigin);
+  if (!isAllowedRelayUrl(origin)) throw new TokenFormatError('relay must be https (http is allowed only for localhost)');
   const { ct, key } = await encryptToken(token);
   const res = await fetchImpl(`${relayOrigin.replace(/\/$/, '')}/v1/relay`, {
     method: 'POST',

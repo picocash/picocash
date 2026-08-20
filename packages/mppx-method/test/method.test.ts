@@ -26,7 +26,7 @@ function makeEchoService(acceptor: PicocashAcceptor, price: number) {
     }
     const started = performance.now();
     try {
-      const receipt = acceptor.verifyCredential(body.credential);
+      const receipt = await acceptor.verifyCredential(body.credential);
       return c.json({ echo: body.message, receipt, verify_ms: performance.now() - started });
     } catch (err) {
       if (err instanceof CredentialRejected) {
@@ -97,7 +97,7 @@ describe('picocash MPP method', () => {
   it('rejects unbound, foreign, tampered, short, and duplicate credentials', async () => {
     const { wallet, proofs, acceptor } = await makeScene(1024);
     const expectReject = (credential: any, reason: string) =>
-      expect(() => acceptor.verifyCredential(credential)).toThrowError(expect.objectContaining({ reason }));
+      expect(acceptor.verifyCredential(credential)).rejects.toThrowError(expect.objectContaining({ reason }));
     let held = proofs;
     const boundCredential = async (challenge: ReturnType<typeof acceptor.createChallenge>) => {
       const { credential, change } = await payChallenge(wallet, held, challenge);
@@ -107,33 +107,33 @@ describe('picocash MPP method', () => {
 
     // unknown challenge id
     const stray = await boundCredential(acceptor.createChallenge(32));
-    expectReject({ ...stray, challenge_id: 'chal_nope' }, 'UNKNOWN_CHALLENGE');
+    await expectReject({ ...stray, challenge_id: 'chal_nope' }, 'UNKNOWN_CHALLENGE');
 
     // mint not in the allowlist (checked before binding)
     const c1 = acceptor.createChallenge(32);
     const cred1 = await boundCredential(c1);
-    expectReject({ ...cred1, mint: 'http://evil.test' }, 'MINT_NOT_ALLOWED');
+    await expectReject({ ...cred1, mint: 'http://evil.test' }, 'MINT_NOT_ALLOWED');
 
     // plain (unbound) secrets
     const sent = await wallet.send(held, 32);
     held = [...sent.change, ...(await wallet.receive(sent.bundle))]; // reclaim everything
     const bundle = sent.bundle;
     const c2 = acceptor.createChallenge(32);
-    expectReject(
+    await expectReject(
       { method: 'picocash', challenge_id: c2.challenge_id, mint: TEST_MINT_URL, keyset_id: bundle.keyset_id, proofs: bundle.proofs },
       'BINDING_INVALID',
     );
 
     // credential for challenge A presented against challenge B (nonce mismatch)
-    expectReject({ ...cred1, challenge_id: c2.challenge_id }, 'BINDING_INVALID');
+    await expectReject({ ...cred1, challenge_id: c2.challenge_id }, 'BINDING_INVALID');
 
     // sum short of the challenge amount
     const c3 = acceptor.createChallenge(96); // 64 + 32: two proofs
     const cred3 = await boundCredential(c3);
-    expectReject({ ...cred3, proofs: cred3.proofs.slice(0, 1) }, 'AMOUNT_INVALID');
+    await expectReject({ ...cred3, proofs: cred3.proofs.slice(0, 1) }, 'AMOUNT_INVALID');
 
     // tampered signature (binding and amount intact) → DLEQ catches it
-    expectReject(
+    await expectReject(
       { ...cred3, proofs: [{ ...cred3.proofs[0]!, C: '02' + 'ab'.repeat(32) }, cred3.proofs[1]!] },
       'DLEQ_INVALID',
     );
@@ -143,7 +143,7 @@ describe('picocash MPP method', () => {
     const [bound32] = await wallet.swap(held.filter((p) => p.amount === 32).slice(0, 1), [
       { amount: 32, secret: pcBindSecretHex(c4.nonce, 'echo.test') },
     ]);
-    expectReject(
+    await expectReject(
       { method: 'picocash', challenge_id: c4.challenge_id, mint: TEST_MINT_URL, keyset_id: bound32!.keyset_id, proofs: [bound32!, bound32!] },
       'DUPLICATE_TOKEN',
     );
@@ -154,7 +154,7 @@ describe('picocash MPP method', () => {
     const challenge = acceptor.createChallenge(32);
     const { credential } = await payChallenge(wallet, proofs, challenge);
 
-    const receipt = acceptor.verifyCredential(credential);
+    const receipt = await acceptor.verifyCredential(credential);
     expect(receipt.settlement).toBe('pending');
 
     // the paying agent still knows the secrets — it races to re-swap them at
@@ -163,5 +163,20 @@ describe('picocash MPP method', () => {
 
     const settled = await acceptor.settle(challenge.challenge_id, serviceWallet);
     expect(settled.settlement).toBe('double-spent');
+  });
+});
+
+describe('acceptor unit check (review P1-5)', () => {
+  it('rejects a keyset whose unit differs from the challenge unit', async () => {
+    const { wallet, proofs, keyset } = await makeScene(64);
+    // allowlist the real keyset but claim it settles a different TIP-20 token
+    const acceptor = new PicocashAcceptor({
+      realm: 'echo.test',
+      mints: [{ url: TEST_MINT_URL, keyset: { ...keyset, unit: 'tip20:42431:0x00000000000000000000000000000000000000ee' } }],
+    });
+    // an externally framed challenge (mppx-style) that asks for the real token
+    const challenge = { ...acceptor.createChallenge(64), challenge_id: 'chal_external', unit: keyset.unit };
+    const { credential } = await payChallenge(wallet, proofs, challenge);
+    await expect(acceptor.verifyCredential(credential, challenge)).rejects.toThrowError(expect.objectContaining({ reason: 'UNIT_MISMATCH' }));
   });
 });

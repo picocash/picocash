@@ -60,7 +60,11 @@ export function serializeToken(bundle: TokenBundle, memo?: string): string {
 const HEX = /^[0-9a-f]+$/;
 
 /** Decode a `pico…` string into a bundle (+ memo). Throws TokenFormatError on anything malformed. */
+/** Hard parse limits (PIP-06 §Limits): bound memory and CPU on untrusted input. */
+export const TOKEN_LIMITS = { maxChars: 1024 * 1024, maxProofs: 1024, maxMemoChars: 512, maxMintUrlChars: 512 } as const;
+
 export function parseToken(input: string): { bundle: TokenBundle; memo?: string } {
+  if (input.length > TOKEN_LIMITS.maxChars) throw new TokenFormatError(`token exceeds ${TOKEN_LIMITS.maxChars} characters`);
   const s = input.trim();
   if (!s.startsWith(PREFIX)) throw new TokenFormatError('not a picocash token (expected "pico" prefix)');
   const version = s.charAt(PREFIX.length);
@@ -75,11 +79,15 @@ export function parseToken(input: string): { bundle: TokenBundle; memo?: string 
     throw new TokenFormatError('token is missing mint, unit, or proofs');
   }
   if (payload.memo !== undefined && typeof payload.memo !== 'string') throw new TokenFormatError('memo must be a string');
+  if ((payload.memo?.length ?? 0) > TOKEN_LIMITS.maxMemoChars) throw new TokenFormatError(`memo exceeds ${TOKEN_LIMITS.maxMemoChars} characters`);
+  if (payload.m.length > TOKEN_LIMITS.maxMintUrlChars || !/^https?:\/\//.test(payload.m)) throw new TokenFormatError('mint must be an http(s) URL');
+  if (!/^tip20:\d+:0x[0-9a-fA-F]{40}$/.test(payload.u)) throw new TokenFormatError('unit must be tip20:<chain_id>:<token_address>');
 
   const proofs: Proof[] = [];
   for (const group of payload.t) {
-    if (typeof group?.i !== 'string' || !Array.isArray(group.p)) throw new TokenFormatError('malformed keyset group');
+    if (typeof group?.i !== 'string' || !/^[0-9a-f]{16}$/.test(group.i) || !Array.isArray(group.p)) throw new TokenFormatError('malformed keyset group');
     for (const p of group.p) {
+      if (proofs.length >= TOKEN_LIMITS.maxProofs) throw new TokenFormatError(`token exceeds ${TOKEN_LIMITS.maxProofs} proofs`);
       const ok =
         Number.isSafeInteger(p?.a) && p.a > 0 &&
         typeof p.s === 'string' && HEX.test(p.s) &&
