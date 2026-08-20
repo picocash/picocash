@@ -37,7 +37,7 @@ export async function main(): Promise<void> {
   let vaultLabel: string;
   if (config.vault === 'tempo') {
     const tempo = config.tempo!;
-    const token = await verifyTokenBinding(tempo);
+    const token = await verifyTokenBinding(tempo, config.meltFee);
     oracle = new TempoVault(tempo);
     payout = tempo.operatorKey ? new TempoPayout(tempo) : undefined;
     vaultLabel = `TEMPO chain ${tempo.chainId}, unit ${config.unit} (${token.symbol}, ${token.decimals} dec), vault ${tempo.depositAddress}, melt ${payout ? 'on' : 'OFF (no operator key)'}`;

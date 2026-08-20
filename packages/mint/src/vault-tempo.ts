@@ -57,6 +57,7 @@ const CHUNK = 10_000n;
  */
 export async function verifyTokenBinding(
   tempo: TempoConfig,
+  meltFee?: number,
 ): Promise<{ symbol: string; decimals: number }> {
   const client = createPublicClient({
     chain: defineChain({
@@ -93,6 +94,24 @@ export async function verifyTokenBinding(
       throw new Error(
         `vault ${tempo.depositAddress} is bound to token ${vaultToken}, but the mint's unit expects ${tempo.tokenAddress} — refusing to start`,
       );
+    }
+    // The exit-tax ceiling is an on-chain commitment; a mint quoting above it
+    // is in breach, so refuse to run in that state at all.
+    if (meltFee !== undefined) {
+      const cap = await client
+        .readContract({
+          address: tempo.depositAddress,
+          abi: parseAbi(['function maxMeltFee() view returns (uint256)']),
+          functionName: 'maxMeltFee',
+        })
+        .catch(() => null); // pre-ceiling vault deployments
+      if (cap === null) {
+        console.warn(`[mint] vault ${tempo.depositAddress} predates the maxMeltFee ceiling — fee cap unverifiable on-chain`);
+      } else if (BigInt(meltFee) > cap) {
+        throw new Error(
+          `configured melt fee ${meltFee} exceeds the vault's on-chain maxMeltFee ${cap} — refusing to start (lower PICOCASH_MELT_FEE or raise the ceiling via its timelock)`,
+        );
+      }
     }
   } else {
     console.warn(`[mint] deposit address ${tempo.depositAddress} is an EOA (no vault contract) — token binding unverifiable on-chain`);
