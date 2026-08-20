@@ -40,7 +40,7 @@ curl -s -X POST :3338/v1/mint       -d '{"quote_id":"<id>","outputs":[...]}'    
 
 Config via env: `PICOCASH_MINT_SEED` (32-byte hex; encrypted at rest in real deployments, never in code or logs), `PICOCASH_OPERATOR_KEY` (signs `vault.ecashMelt` for melts; melt answers `NOT_IMPLEMENTED` without it), `PORT`, `DATABASE_URL`, `PICOCASH_MAX_MINT_AMOUNT`, `PICOCASH_QUOTE_TTL_SECONDS`.
 
-**Melt** (`POST /v1/melt/quote` → `POST /v1/melt`) burns proofs insert-before-pay and pays out through [`PicocashVault.ecashMelt`](https://github.com/picocash/picocash-contracts) — one payout per melt id enforced on-chain, so a failed payout (`OWED`) can be retried with the same inputs without double-pay risk. Deposits go to the vault contract (Moderato: `0x1607001B73dC69C559376299354b17C72906123f`).
+**Melt** (`POST /v1/melt/quote` → `POST /v1/melt`) burns proofs insert-before-pay and pays out through [`PicocashVault.ecashMelt`](https://github.com/picocash/picocash-contracts) — one payout per melt id enforced on-chain, so a failed payout (`OWED`) can be retried with the same inputs without double-pay risk. Deposits go to the vault contract (Moderato: `0x91Dd6be2EF2e363b088b2EEf5a20d32f10b455be`).
 
 ```sh
 npm test             # 19 tests incl. double-spend + concurrency races and melt failure/retry
