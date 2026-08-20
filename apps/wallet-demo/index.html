@@ -203,6 +203,7 @@ $('connectBtn').onclick = async () => {
     const info = await api('GET', '/v1/info');
     const keyset = (await api('GET', '/v1/keys')).keysets[0];
     mint.unit = info.unit; mint.keyset = keyset; mint.vault = info.vault;
+    mint.meltFee = Number(info.fees?.melt ?? 0);
     $('mintInfo').innerHTML = `
       <div class="kv"><b>${info.name}</b> · ${info.version}</div>
       <div class="kv">keyset <b>${keyset.id}</b> · unit ${info.unit}</div>
@@ -399,7 +400,9 @@ $('meltBtn').onclick = async () => {
     const amount = parseAmountUsd('meltAmount');
     const to = $('meltTo').value.trim();
     if (!/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error('enter a 20-byte 0x… payout address');
-    const proofs = await takeExact(amount);
+    const fee = mint.meltFee ?? 0;
+    if (fee) log(`melt fee: $${(fee / 1e6).toFixed(6)} (covers the on-chain payout; burned with your tokens)`);
+    const proofs = await takeExact(amount + fee);
     const quote = await api('POST', '/v1/melt/quote', { amount, unit: mint.unit, to });
     log(`melt quote ${quote.melt_id.slice(0, 16)}… — burning proofs and requesting vault payout`);
     const melted = await api('POST', '/v1/melt', {

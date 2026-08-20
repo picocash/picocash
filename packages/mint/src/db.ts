@@ -129,4 +129,6 @@ export async function migrate(db: Db): Promise<void> {
     const sql = statement.trim();
     if (sql) await db.query(sql);
   }
+  // In-place upgrades for pre-existing dev databases.
+  await db.query('ALTER TABLE melt_quotes ADD COLUMN IF NOT EXISTS fee BIGINT NOT NULL DEFAULT 0');
 }

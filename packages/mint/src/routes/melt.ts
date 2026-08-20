@@ -9,7 +9,8 @@ import { meltQuoteRequestSchema, meltRequestSchema, parseBody } from '../validat
 
 interface MeltRow {
   id: string;
-  amount: string | number;
+  amount: string | number; // the on-chain payout; inputs must sum to amount + fee
+  fee: string | number;
   unit: string;
   to_address: string;
   state: string; // UNPAID → PENDING → PAID, OWED = retryable payout failure
@@ -26,6 +27,8 @@ function meltResponse(row: MeltRow) {
   return {
     melt_id: row.id,
     amount: Number(row.amount),
+    fee: Number(row.fee),
+    total: Number(row.amount) + Number(row.fee),
     unit: row.unit,
     to: row.to_address,
     state: row.state,
@@ -63,7 +66,7 @@ export function meltRoutes(ctx: MintContext): Hono {
     }
     const id = randomBytes(32).toString('hex'); // becomes the vault's bytes32 meltId
     const expiresAt = nowSeconds() + ctx.config.quoteTtlSeconds;
-    await ctx.db.query('INSERT INTO melt_quotes (id, amount, unit, to_address, expires_at) VALUES ($1, $2, $3, $4, $5)', [id, body.amount, body.unit, body.to, expiresAt]);
+    await ctx.db.query('INSERT INTO melt_quotes (id, amount, fee, unit, to_address, expires_at) VALUES ($1, $2, $3, $4, $5, $6)', [id, body.amount, ctx.config.meltFee, body.unit, body.to, expiresAt]);
     return c.json(meltResponse(await fetchMelt(ctx, id)));
   });
 
@@ -74,8 +77,9 @@ export function meltRoutes(ctx: MintContext): Hono {
     const body = await parseBody(c, meltRequestSchema);
     const melt = await fetchMelt(ctx, body.melt_id);
     const inputs = verifyInputs(ctx.keyset, body.inputs);
-    if (sumAmounts(inputs) !== Number(melt.amount)) {
-      throw new ApiError(400, 'AMOUNT_MISMATCH', `inputs sum to ${sumAmounts(inputs)}, melt is for ${melt.amount}`, 'inputs must sum to exactly the melt amount (no fees in v0.1); use /v1/swap for change first');
+    const total = Number(melt.amount) + Number(melt.fee);
+    if (sumAmounts(inputs) !== total) {
+      throw new ApiError(400, 'AMOUNT_MISMATCH', `inputs sum to ${sumAmounts(inputs)}, melt requires ${total} (payout ${melt.amount} + fee ${melt.fee})`, 'inputs must sum to exactly amount + fee; use /v1/swap for change first');
     }
     const hash = inputsHash(inputs);
 

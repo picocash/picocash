@@ -43,7 +43,11 @@ export interface MintQuote {
 
 export interface MeltQuote {
   melt_id: string;
+  /** The on-chain payout. */
   amount: number;
+  /** The mint's melt fee; inputs must sum to `total = amount + fee`. */
+  fee: number;
+  total: number;
   unit: string;
   to: string;
   state: 'UNPAID' | 'PENDING' | 'PAID' | 'OWED';

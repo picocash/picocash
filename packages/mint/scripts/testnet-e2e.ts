@@ -137,21 +137,22 @@ const changeProofs = swapped.signatures.map((sig: any, i: number) => {
   const C = unblindSignature(hexToBytes(sig.C_), p.r, mintPubkey);
   return { amount: p.amount, keyset_id: keyset.id, secret: bytesToHex(p.secret), C: bytesToHex(C) };
 });
-const meltAmount = half * 2;
+const meltFee = Number(info.fees?.melt ?? 0);
+const payout = half * 2 - meltFee; // the fee is burned with the inputs, not paid out
 const balanceOfAbi = parseAbi(['function balanceOf(address) view returns (uint256)']);
 const balanceBefore = await publicClient.readContract({
   address: quote.deposit.token, abi: balanceOfAbi, functionName: 'balanceOf', args: [account.address],
 });
-const meltQuote = await api('POST', '/v1/melt/quote', { amount: meltAmount, unit: info.unit, to: account.address });
-console.log(`melt quote ${meltQuote.melt_id.slice(0, 16)}… for ${meltAmount} → ${account.address}`);
+const meltQuote = await api('POST', '/v1/melt/quote', { amount: payout, unit: info.unit, to: account.address });
+console.log(`melt quote ${meltQuote.melt_id.slice(0, 16)}… payout ${payout} + fee ${meltQuote.fee} → ${account.address}`);
 const melted = await api('POST', '/v1/melt', { melt_id: meltQuote.melt_id, inputs: changeProofs });
 console.log(`melt ${melted.state}: vault.ecashMelt tx ${melted.tx_hash}`);
 const balanceAfter = await publicClient.readContract({
   address: quote.deposit.token, abi: balanceOfAbi, functionName: 'balanceOf', args: [account.address],
 });
-if (balanceAfter - balanceBefore !== BigInt(meltAmount)) {
-  throw new Error(`payout mismatch: balance moved ${balanceAfter - balanceBefore}, expected ${meltAmount}`);
+if (balanceAfter - balanceBefore !== BigInt(payout)) {
+  throw new Error(`payout mismatch: balance moved ${balanceAfter - balanceBefore}, expected ${payout}`);
 }
-console.log(`payer pathUSD balance +${meltAmount} confirmed on-chain`);
+console.log(`payer pathUSD balance +${payout} confirmed on-chain (fee ${meltFee} accrued to the vault)`);
 
 console.log('\nE2E OK — deposit → mint → swap → melt, all against the live vault on Tempo testnet.');

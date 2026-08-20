@@ -79,6 +79,29 @@ describe('melt', () => {
     expect(badAddr.body.error.code).toBe('INVALID_REQUEST');
   });
 
+  it('melt fee: inputs cover amount + fee, payout excludes fee, surplus accrues', async () => {
+    const mint = await makeMint();
+    mint.config.meltFee = 2;
+    const proofs = await mintTokens(mint, 6);
+
+    const quote = await mint.post('/v1/melt/quote', { amount: 4, unit: mint.config.unit, to: PAYOUT_ADDR });
+    expect(quote.body.fee).toBe(2);
+    expect(quote.body.total).toBe(6);
+
+    // inputs covering only the payout are rejected with the fee spelled out
+    const short = await mint.post('/v1/melt', { melt_id: quote.body.melt_id, inputs: proofs.filter((p) => p.amount === 4) });
+    expect(short.body.error.code).toBe('AMOUNT_MISMATCH');
+    expect(short.body.error.message).toContain('fee 2');
+
+    // full total burns 6, pays out 4 — the 2 stays in the vault as surplus
+    const melted = await mint.post('/v1/melt', { melt_id: quote.body.melt_id, inputs: proofs });
+    expect(melted.body.state).toBe('PAID');
+    expect(mint.payout.calls).toEqual([{ to: PAYOUT_ADDR, amount: 4, meltId: quote.body.melt_id }]);
+
+    const { computeOutstanding } = await import('../src/solvency.js');
+    expect(await computeOutstanding(mint.db, mint.keyset.id)).toBe(0); // all 6 burned
+  });
+
   it('one payout even under concurrent melt requests', async () => {
     const mint = await makeMint();
     const proofs = await mintTokens(mint, 8);

@@ -101,9 +101,17 @@ export class Wallet {
     return this.api('POST', '/v1/melt', { melt_id: meltId, inputs: inputs.map(wireProof) });
   }
 
-  /** Convenience: melt exactly these proofs to `to`. */
+  /**
+   * Convenience: melt exactly these proofs to `to`. The mint's melt fee comes
+   * out of the proofs — the on-chain payout is `sum(proofs) − fee`.
+   */
   async meltProofs(to: string, proofs: Proof[]): Promise<MeltQuote> {
-    const quote = await this.requestMeltQuote(sumProofs(proofs), to);
+    const info = await this.info();
+    const fee = Number(info?.fees?.melt ?? 0);
+    const total = sumProofs(proofs);
+    if (total <= fee) throw new Error(`proofs sum to ${total}, which does not cover the melt fee of ${fee}`);
+    const quote = await this.requestMeltQuote(total - fee, to);
+    if (quote.total !== total) throw new Error(`melt quote wants ${quote.total}, proofs sum to ${total} — fee changed between info and quote?`);
     return this.melt(quote.melt_id, proofs);
   }
 

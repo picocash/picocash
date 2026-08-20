@@ -26,6 +26,9 @@ export interface MintConfig {
   maxMintAmount: number;
   /** Global outstanding-supply cap, base units; 0 = uncapped. Reference mints MUST set this. */
   maxOutstanding: number;
+  /** Flat melt fee, base units: burned with the inputs but not paid out, so it
+   *  accrues in the vault and reimburses the operator's payout gas. */
+  meltFee: number;
   quoteTtlSeconds: number;
 }
 
@@ -92,6 +95,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MintConfig {
     ...(vault === 'tempo' ? { tempo: loadTempoConfig(env) } : {}),
     maxMintAmount: Number(env.PICOCASH_MAX_MINT_AMOUNT ?? 100_000_000), // $100
     maxOutstanding: Number(env.PICOCASH_MAX_OUTSTANDING ?? 0),
+    meltFee: Number(env.PICOCASH_MELT_FEE ?? 10_000), // $0.01: ~2–20x observed payout gas on Moderato
     quoteTtlSeconds: Number(env.PICOCASH_QUOTE_TTL_SECONDS ?? 900),
   };
 }

@@ -81,6 +81,20 @@ describe('Wallet', () => {
     expect(states.every((s) => s.state === 'SPENT')).toBe(true);
   });
 
+  it('meltProofs nets the mint fee out of the payout', async () => {
+    const { mint, wallet, proofs } = await fundedWallet(6);
+    mint.config.meltFee = 2;
+    const result = await wallet.meltProofs('0x00000000000000000000000000000000000000B2', proofs);
+    expect(result.state).toBe('PAID');
+    expect(result.amount).toBe(4); // 6 burned − 2 fee
+    expect(result.fee).toBe(2);
+    expect(mint.payout.calls[0]!.amount).toBe(4);
+
+    const dust = await fundedWallet(2);
+    dust.mint.config.meltFee = 2;
+    await expect(dust.wallet.meltProofs('0x00000000000000000000000000000000000000B2', dust.proofs)).rejects.toThrow(/does not cover the melt fee/);
+  });
+
   it('surfaces mint errors as MintApiError with recovery hints', async () => {
     const { wallet, proofs } = await fundedWallet(4);
     const quote = await wallet.requestMeltQuote(999, '0x00000000000000000000000000000000000000B2');

@@ -41,6 +41,7 @@ export function buildApp(ctx: MintContext): Hono {
       unit: ctx.config.unit,
       keysets: [{ id: ctx.keyset.id, unit: ctx.keyset.unit, state: 'active' }],
       limits: { max_mint_amount: ctx.config.maxMintAmount },
+      fees: { melt: ctx.config.meltFee },
       melt: Boolean(ctx.payout),
       vault:
         ctx.config.vault === 'tempo' && ctx.config.tempo
