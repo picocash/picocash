@@ -1,5 +1,5 @@
 /**
- * Proof of liabilities (spec/05): read outstanding supply from the running
+ * Proof of liabilities (PIP-04): read outstanding supply from the running
  * mint's public /v1/solvency endpoint, verify the invariant against the
  * vault's on-chain balance, and publish it via vault.publishOutstandingSupply.
  *

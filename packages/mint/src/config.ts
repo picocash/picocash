@@ -37,7 +37,7 @@ const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 /**
  * Canonical unit identifier: the unit IS the TIP-20 token contract it is
  * backed by, scoped by chain. Keyset keys derive from this string, so keys
- * for one token/chain can never be confused with another's (spec/02).
+ * for one token/chain can never be confused with another's (PIP-01).
  */
 export function tip20Unit(chainId: number, tokenAddress: string): string {
   return `tip20:${chainId}:${tokenAddress.toLowerCase()}`;

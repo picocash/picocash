@@ -29,7 +29,7 @@ export function buildApp(ctx: MintContext): Hono {
 
   app.notFound((c) =>
     c.json(
-      { error: { code: 'NOT_FOUND', message: `no route ${c.req.method} ${c.req.path}`, recovery: 'see GET /v1/info for the endpoint list (spec/03-mint-api.md)' } },
+      { error: { code: 'NOT_FOUND', message: `no route ${c.req.method} ${c.req.path}`, recovery: 'see GET /v1/info for the endpoint list (PIP-02)' } },
       404,
     ),
   );
@@ -64,7 +64,7 @@ export function buildApp(ctx: MintContext): Hono {
   });
 
   // Transparency endpoint: the liability side of proof of liabilities.
-  // Anyone can compare this to the vault's on-chain balance (spec/05).
+  // Anyone can compare this to the vault's on-chain balance (PIP-04).
   app.get('/v1/solvency', async (c) => {
     const outstanding = await computeOutstanding(ctx.db, ctx.keyset.id);
     return c.json({

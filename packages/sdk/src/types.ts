@@ -1,6 +1,6 @@
 /** A spendable token unit. `dleq` (with the blinding factor r) makes it
  *  offline-verifiable by anyone holding the mint's public keys — required for
- *  agent-to-agent transfer and MPP accept-then-settle (spec/01 §3, spec/04). */
+ *  agent-to-agent transfer and MPP accept-then-settle (PIP-00 §3, PIP-05). */
 export interface Proof {
   amount: number;
   keyset_id: string;

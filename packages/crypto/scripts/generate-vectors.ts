@@ -1,5 +1,6 @@
 /**
- * Generates spec/vectors/crypto-v0.1.json deterministically.
+ * Generates the crypto test vectors deterministically (canonical copy:
+ * github.com/picocash/pips vectors/).
  *
  * All private values (keys, blinding factors, DLEQ nonces) are derived by
  * hashing fixed labels, so anyone can regenerate the file bit-for-bit and no
@@ -96,7 +97,7 @@ const roundTrips = [
 const vectors = {
   version: '0.1',
   curve: 'secp256k1',
-  spec: 'spec/01-crypto.md',
+  spec: 'PIP-00',
   notes:
     'All byte strings are lowercase hex; points are 33-byte SEC1 compressed. Secrets and hash_to_curve messages are raw bytes (hex-decoded) EXCEPT cashu_compat.dleq.proof.secret_utf8, which is a UTF-8 string per upstream NUT-12. Never reuse these keys, factors, or nonces outside tests. cashu_compat reproduces upstream vectors from github.com/cashubtc/nuts/tree/main/tests.',
   cashu_compat: {
@@ -139,6 +140,8 @@ const vectors = {
   },
 };
 
-const outPath = join(dirname(fileURLToPath(import.meta.url)), '../../../spec/vectors/crypto-v0.1.json');
+// Canonical vectors live in github.com/picocash/pips (vectors/); copy this
+// output there when a spec change regenerates them.
+const outPath = join(dirname(fileURLToPath(import.meta.url)), '../crypto-v0.1.generated.json');
 writeFileSync(outPath, JSON.stringify(vectors, null, 2) + '\n');
 console.log(`wrote ${outPath}`);

@@ -1,5 +1,5 @@
 /**
- * mppx bindings for the `picocash` payment method (spec/04).
+ * mppx bindings for the `picocash` payment method (PIP-05).
  *
  * mppx owns the envelope: it issues HMAC-bound challenges, moves credentials
  * in the `Authorization: Payment …` header, and drives the validate/broadcast

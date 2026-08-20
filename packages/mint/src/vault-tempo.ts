@@ -50,7 +50,7 @@ export interface TempoVaultOptions {
 const CHUNK = 10_000n;
 
 /**
- * Startup check for the unit ↔ token ↔ vault binding (spec/02): the unit's
+ * Startup check for the unit ↔ token ↔ vault binding (PIP-01): the unit's
  * token address must be a live TIP-20 on this chain, and if the deposit
  * address is a vault contract, its token() must be exactly that token.
  * Refusing to start beats minting tokens backed by the wrong asset.

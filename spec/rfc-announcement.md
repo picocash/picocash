@@ -14,18 +14,18 @@ picocash moves the per-call hot path off-chain without moving custody off-chain:
 
 ## What works today (all public, pre-alpha)
 
-- **Crypto core** with published test vectors ([spec/vectors](https://github.com/picocash/picocash/tree/main/spec/vectors)) — blind signatures + DLEQ proofs on secp256k1, so any third party verifies a token against a mint's published keys without contacting the mint.
+- **Crypto core** with published test vectors ([pips/vectors](https://github.com/picocash/pips/tree/main/vectors)) — blind signatures + DLEQ proofs on secp256k1, so any third party verifies a token against a mint's published keys without contacting the mint.
 - **Mint server** live against Tempo Moderato testnet: deposits observed ~2s after confirmation, double-spend ledger with concurrency race tests, melt back to on-chain funds.
 - **Vault contract** deployed to Moderato ([picocash-contracts](https://github.com/picocash/picocash-contracts)), factory-deployed with on-chain discovery (`info()` returns the mint's URL, keyset, balance, and last attested outstanding supply in one call). Every vault carries two deploy-time commitments: a **solvency-publication policy** (miss the attestation interval and the vault stops accepting deposits until the mint publishes again) and a **melt-fee ceiling** (see the exit guarantee below).
-- **The MPP method** ([spec/04](https://github.com/picocash/picocash/blob/main/spec/04-mpp-method.md)): challenge → credential → receipt, with credentials cryptographically bound to the challenge nonce so interception buys nothing. Reference implementation pays a demo service end to end: **one $1 deposit funds 20 calls, mean offline verification 45ms**.
+- **The MPP method** ([PIP-05](https://github.com/picocash/pips/blob/main/PIP-05.md)): challenge → credential → receipt, with credentials cryptographically bound to the challenge nonce so interception buys nothing. Reference implementation pays a demo service end to end: **one $1 deposit funds 20 calls, mean offline verification 45ms**.
 - A browser wallet demo (mint / transfer / melt against the live testnet mint).
 
 ## Where we want your input (the actual RFC)
 
-1. **Challenge binding**: secrets that commit to the challenge (`PC-BIND` format, simple, implemented) vs. P2PK-style spending conditions (richer — could lock to a service pubkey — but heavier for verifiers). [spec/04, open question 1]
-2. **Unit identity**: we've bound units to token contracts — `tip20:<chain_id>:<token_address>` — with keyset keys and ids derived from that string, and the mint refusing to start unless `vault.token()` matches. Is CAIP-19 alignment worth the ceremony? [spec/02]
+1. **Challenge binding**: secrets that commit to the challenge (`PC-BIND` format, simple, implemented) vs. P2PK-style spending conditions (richer — could lock to a service pubkey — but heavier for verifiers). [PIP-05, open question 1]
+2. **Unit identity**: we've bound units to token contracts — `tip20:<chain_id>:<token_address>` — with keyset keys and ids derived from that string, and the mint refusing to start unless `vault.token()` matches. Is CAIP-19 alignment worth the ceremony? [PIP-01]
 3. **Receipts**: should acceptance receipts be mint-cosigned so agents can prove payment to third parties?
 4. **Keyset rotation windows**: protocol constants or per-mint policy?
 5. Anything that smells unsound. The runtime security model is two sentences: the mint's spent-secret ledger is insert-before-sign in one transaction, and every signature carries a DLEQ proof. The custody model is one **exit guarantee**, every clause of it on-chain and checkable before you deposit: *withdrawals can never be paused; each melt pays out exactly once (`meltPaid`); the fee to exit is capped by the vault's committed `maxMeltFee`; and raising that cap — like rotating the operator key — takes two days of public notice.* We closed the fee-based soft-freeze hole ourselves; we'd like you to look for the ones we haven't found. Break any clause and we want to know before this touches real money.
 
-Spec: https://github.com/picocash/picocash/tree/main/spec · Issues welcome on either repo. This is pre-alpha under RFC — design feedback now is worth ten patches later.
+Spec: https://github.com/picocash/pips · Issues welcome on either repo. This is pre-alpha under RFC — design feedback now is worth ten patches later.

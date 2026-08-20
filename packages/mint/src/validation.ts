@@ -64,7 +64,7 @@ export async function parseBody<S extends z.ZodTypeAny>(c: Context, schema: S): 
   try {
     raw = await c.req.json();
   } catch {
-    throw new ApiError(400, 'INVALID_REQUEST', 'body is not valid JSON', 'send a JSON body matching spec/03-mint-api.md');
+    throw new ApiError(400, 'INVALID_REQUEST', 'body is not valid JSON', 'send a JSON body matching PIP-02');
   }
   const result = schema.safeParse(raw);
   if (!result.success) {
@@ -72,7 +72,7 @@ export async function parseBody<S extends z.ZodTypeAny>(c: Context, schema: S): 
       .slice(0, 3)
       .map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('; ');
-    throw new ApiError(400, 'INVALID_REQUEST', detail, 'fix the listed fields per spec/03-mint-api.md and resend');
+    throw new ApiError(400, 'INVALID_REQUEST', detail, 'fix the listed fields per PIP-02 and resend');
   }
   return result.data;
 }

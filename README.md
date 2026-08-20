@@ -20,13 +20,13 @@ A **mint** holds USDC.e in an on-chain **vault contract**, 1:1 against outstandi
 
 ## The MPP payment method
 
-The core deliverable is [`spec/04-mpp-method.md`](spec/04-mpp-method.md): a `picocash` method binding for MPP's challenge → credential → receipt flow. A service issues a challenge naming an amount and a mint allowlist; the agent answers with a token bundle cryptographically bound to the challenge nonce (so intercepted credentials can't be replayed); the service verifies offline via DLEQ and redeems asynchronously.
+The core deliverable is [`PIP-05`](https://github.com/picocash/pips/blob/main/PIP-05.md): a `picocash` method binding for MPP's challenge → credential → receipt flow. A service issues a challenge naming an amount and a mint allowlist; the agent answers with a token bundle cryptographically bound to the challenge nonce (so intercepted credentials can't be replayed); the service verifies offline via DLEQ and redeems asynchronously.
 
 ## Repo layout
 
 | Path | What | Status |
 |---|---|---|
-| [`spec/`](spec/) | Protocol + MPP method spec + **test vectors** | crypto spec + vectors live; rest draft |
+| [pips](https://github.com/picocash/pips) | **The specifications (PIP-00…05) + test vectors** — separate repo, the RFC home | all under RFC |
 | [`packages/crypto`](packages/crypto/) | BDHKE, hash-to-curve, DLEQ (secp256k1, `@noble/curves`) | **implemented, tested** |
 | [`packages/mint`](packages/mint/) | Mint server (TypeScript + Hono + Postgres) | **live on Tempo testnet** — mint/swap/melt/checkstate against the deployed vault |
 | [`packages/sdk`](packages/sdk/) | Agent wallet-lite client | **implemented** — mint/swap/melt/send/receive, offline verification |
@@ -37,7 +37,7 @@ The core deliverable is [`spec/04-mpp-method.md`](spec/04-mpp-method.md): a `pic
 
 ## Test vectors
 
-[`spec/vectors/`](spec/vectors/) publishes versioned test vectors for hash-to-curve, blind/unblind round-trips, and DLEQ proofs. The crypto constructions are **Cashu NUT-00/NUT-12 compatible** (same hash-to-curve domain separator, same DLEQ hash), verified against the upstream Cashu test vectors — a second implementation in any language should pass both sets. If you're implementing, start there.
+[pips/vectors](https://github.com/picocash/pips/blob/main/../tree/main/vectors) publishes versioned test vectors for hash-to-curve, blind/unblind round-trips, and DLEQ proofs. The crypto constructions are **Cashu NUT-00/NUT-12 compatible** (same hash-to-curve domain separator, same DLEQ hash), verified against the upstream Cashu test vectors — a second implementation in any language should pass both sets. If you're implementing, start there.
 
 ## Relationship to Cashu
 
@@ -45,7 +45,7 @@ The blind-signature cryptography follows the [Cashu NUTs](https://github.com/cas
 
 ## Contributing
 
-The spec is under RFC — [design feedback](CONTRIBUTING.md) on `spec/` is the most valuable contribution right now. See [SECURITY.md](SECURITY.md) for vulnerability disclosure.
+The specs are under RFC — [design feedback](https://github.com/picocash/pips) on the pips is the most valuable contribution right now. See [SECURITY.md](SECURITY.md) for vulnerability disclosure.
 
 ## License
 

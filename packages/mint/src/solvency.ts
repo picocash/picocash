@@ -7,7 +7,7 @@ import type { Db } from './db.js';
  *
  * Swaps add equal amounts to both sides (net zero), mints only issue, melts
  * only spend — so this is exactly the vault liability. The solvency invariant
- * (spec/05) is: vault balance ≥ this number.
+ * (PIP-04) is: vault balance ≥ this number.
  */
 export async function computeOutstanding(db: Db, keysetId: string): Promise<number> {
   const issued = await db.query<{ total: string | number | null }>(

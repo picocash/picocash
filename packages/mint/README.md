@@ -1,6 +1,6 @@
 # @picocash/mint
 
-The picocash mint server: Hono HTTP API over Postgres, implementing keysets, mint quotes, blind-signature issuance, swap, and checkstate per [`spec/03-mint-api.md`](../../spec/03-mint-api.md). **Build step 4: runs against a fake in-memory vault** — the `DepositOracle` interface in [`src/vault.ts`](src/vault.ts) is what the real Tempo chain watcher implements in step 5; the API doesn't change.
+The picocash mint server: Hono HTTP API over Postgres, implementing keysets, mint quotes, blind-signature issuance, swap, and checkstate per [`PIP-02`](https://github.com/picocash/pips/blob/main/PIP-02.md). **Build step 4: runs against a fake in-memory vault** — the `DepositOracle` interface in [`src/vault.ts`](src/vault.ts) is what the real Tempo chain watcher implements in step 5; the API doesn't change.
 
 ## The security model in one paragraph
 

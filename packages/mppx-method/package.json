@@ -1,7 +1,7 @@
 {
   "name": "@picocash/mppx-method",
   "version": "0.1.0",
-  "description": "MPP custom payment method 'picocash': challenge \u2192 credential \u2192 receipt with sub-100ms offline verification and accept-then-settle (spec/04)",
+  "description": "MPP custom payment method 'picocash': challenge \u2192 credential \u2192 receipt with sub-100ms offline verification and accept-then-settle (PIP-05)",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",

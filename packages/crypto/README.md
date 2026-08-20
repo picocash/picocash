@@ -2,7 +2,7 @@
 
 The cryptographic core of picocash: BDHKE blind signatures, NUT-00-compatible hash-to-curve, and DLEQ proofs on secp256k1, built on `@noble/curves` / `@noble/hashes` (audited, zero-dep). Pure library — no network, no storage.
 
-Spec: [`spec/01-crypto.md`](../../spec/01-crypto.md) · Vectors: [`spec/vectors/crypto-v0.1.json`](../../spec/vectors/crypto-v0.1.json)
+Spec: [`PIP-00`](https://github.com/picocash/pips/blob/main/PIP-00.md) · Vectors: [pips/vectors](https://github.com/picocash/pips/tree/main/vectors)
 
 ## API sketch
 
@@ -31,6 +31,6 @@ All points are 33-byte SEC1 compressed `Uint8Array`s, all scalars 32-byte big-en
 
 ```sh
 npm test                 # vitest: Cashu compat vectors + round-trip/negative tests
-npm run vectors          # regenerate spec/vectors/crypto-v0.1.json (deterministic)
+npm run vectors          # regenerate the vectors (deterministic; canonical copy lives in picocash/pips)
 npm run build
 ```

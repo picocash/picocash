@@ -1,6 +1,6 @@
 # @picocash/mppx-method
 
-Reference implementation of the `picocash` MPP payment method ([spec/04](../../spec/04-mpp-method.md)): challenge → credential → receipt with **offline verification** and **accept-then-settle**.
+Reference implementation of the `picocash` MPP payment method ([PIP-05](https://github.com/picocash/pips/blob/main/PIP-05.md)): challenge → credential → receipt with **offline verification** and **accept-then-settle**.
 
 ```ts
 // service side
@@ -14,7 +14,7 @@ await acceptor.settle(challenge.challenge_id, serviceWallet); // async: swap at 
 const { credential, change } = await payChallenge(wallet, proofs, challenge);
 ```
 
-Measured in the test suite: **one $1 deposit funds 20 paid calls with mean offline verification of ~45ms** (max 48ms) — the sub-100ms path is real, not aspirational. Verification runs the six spec/04 checks in order (challenge single-use → mint allowlist → `PC-BIND` challenge binding → exact amount/denominations → DLEQ per proof → duplicate-`Y` guard) and rejects with a typed `CredentialRejected` naming the failed check.
+Measured in the test suite: **one $1 deposit funds 20 paid calls with mean offline verification of ~45ms** (max 48ms) — the sub-100ms path is real, not aspirational. Verification runs the six PIP-05 checks in order (challenge single-use → mint allowlist → `PC-BIND` challenge binding → exact amount/denominations → DLEQ per proof → duplicate-`Y` guard) and rejects with a typed `CredentialRejected` naming the failed check.
 
 The double-spend exposure of accept-then-settle is bounded and tested: a payer who re-swaps their bound proofs before settlement produces a `double-spent` receipt at settle time — recourse is service-level, and per-call amounts keep the window small.
 

@@ -74,7 +74,7 @@ export function mintRoutes(ctx: MintContext): Hono {
     if (body.amount > ctx.config.maxMintAmount) {
       throw new ApiError(400, 'AMOUNT_LIMIT', `amount exceeds the per-quote limit of ${ctx.config.maxMintAmount}`, 'request a smaller amount, or split across multiple quotes');
     }
-    // Publication-policy mirror (spec/05): while the vault's solvency
+    // Publication-policy mirror (PIP-04): while the vault's solvency
     // attestation is overdue, no new money is accepted — matching the
     // vault's own gate on allowance deposits.
     if (await ctx.oracle.isPublicationOverdue?.()) {

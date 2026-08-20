@@ -24,7 +24,7 @@ interface ChallengeState {
 const nowSeconds = () => Math.floor(Date.now() / 1000);
 
 /**
- * Service side of the `picocash` MPP method (spec/04): issues challenges,
+ * Service side of the `picocash` MPP method (PIP-05): issues challenges,
  * verifies credentials entirely OFFLINE (the sub-100ms path — no mint
  * round-trip), and settles asynchronously at the mint. Accept-then-settle:
  * the service's double-spend exposure is bounded by amount × settlement lag.
@@ -66,7 +66,7 @@ export class PicocashAcceptor {
   }
 
   /**
-   * The offline verification pipeline, in spec/04 order. Throws
+   * The offline verification pipeline, in PIP-05 order. Throws
    * CredentialRejected naming the failed check; returns a `pending` receipt on
    * success and marks the challenge paid (single-use).
    *
@@ -157,7 +157,7 @@ export class PicocashAcceptor {
    * Async settlement: swap the accepted proofs for fresh service-owned ones at
    * the mint. This is the double-spend check and the moment of finality; a
    * TOKEN_ALREADY_SPENT here marks the receipt double-spent (service-level
-   * recourse applies — spec/04).
+   * recourse applies — PIP-05).
    */
   async settle(challengeId: string, wallet: Wallet): Promise<PicocashReceipt> {
     const state = this.challenges.get(challengeId);

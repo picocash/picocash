@@ -19,7 +19,7 @@ Key properties:
 
 - Every minted/swapped proof carries `dleq: {e, s, r}`, so **anyone** can verify it offline against the mint's published keys (`verifyProofOffline`) — the basis of agent-to-agent transfer and MPP accept-then-settle.
 - Every signature from the mint is DLEQ-verified before the SDK trusts it; a mint that can't prove its signatures throws.
-- `pcBindSecretHex` / `parsePcBindSecret` implement the canonical `PC-BIND` challenge-bound secrets from [spec/04](../../spec/04-mpp-method.md).
+- `pcBindSecretHex` / `parsePcBindSecret` implement the canonical `PC-BIND` challenge-bound secrets from [PIP-05](https://github.com/picocash/pips/blob/main/PIP-05.md).
 - Mint errors surface as `MintApiError` with the mint's machine-readable `code` and `recovery` hint.
 
 Tests run against an in-process mint (no HTTP, no chain): `npm test`.

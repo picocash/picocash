@@ -106,7 +106,7 @@ import { bytesToHex, hexToBytes, concatBytes, utf8ToBytes } from 'https://esm.sh
 import { createWalletClient, http, defineChain, encodeFunctionData, parseAbi } from 'https://esm.sh/viem@2.38.5';
 import { privateKeyToAccount } from 'https://esm.sh/viem@2.38.5/accounts';
 
-// ---- crypto client (mirrors packages/crypto; spec/01-crypto.md) ------------
+// ---- crypto client (mirrors packages/crypto; PIP-00) ------------
 const Point = secp256k1.ProjectivePoint;
 const ORDER = secp256k1.CURVE.n;
 const DOMAIN = utf8ToBytes('Secp256k1_HashToCurve_Cashu_');

@@ -15,7 +15,7 @@ export interface Keyset {
   keys: Map<number, DenominationKey>;
 }
 
-/** Rejection-sampled scalar per spec/02-keysets.md: HMAC-SHA256(seed, label/i). */
+/** Rejection-sampled scalar per PIP-01: HMAC-SHA256(seed, label/i). */
 function deriveDenominationPrivkey(seed: Uint8Array, unit: string, denomination: number): Uint8Array {
   for (let i = 0; ; i++) {
     const candidate = hmac(sha256, seed, utf8ToBytes(`picocash/keyset/v1/${unit}/${denomination}/${i}`));
@@ -25,7 +25,7 @@ function deriveDenominationPrivkey(seed: Uint8Array, unit: string, denomination:
 }
 
 /**
- * Keyset id per spec/02: "00" + first 7 bytes of
+ * Keyset id per PIP-01: "00" + first 7 bytes of
  * SHA256(pubkeys ascending by denomination || UTF-8(unit)).
  * The unit (tip20:<chain_id>:<token>) is folded into the id so the id itself
  * commits to the exact token contract and chain backing the keyset.

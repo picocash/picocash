@@ -9,7 +9,7 @@ import {
 } from '../src/index.js';
 
 // Upstream Cashu test vectors (github.com/cashubtc/nuts/tree/main/tests).
-// Passing these demonstrates byte-compatibility of the crypto layer (spec/01 §4).
+// Passing these demonstrates byte-compatibility of the crypto layer (PIP-00 §4).
 
 describe('NUT-00 hash_to_curve', () => {
   const vectors = [

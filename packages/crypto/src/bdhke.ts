@@ -7,7 +7,7 @@ import {
 } from './points.js';
 
 /**
- * BDHKE per spec/01-crypto.md §2. All points are 33-byte SEC1 compressed,
+ * BDHKE per PIP-00 §2. All points are 33-byte SEC1 compressed,
  * all scalars 32-byte big-endian.
  */
 

@@ -1,6 +1,6 @@
 import type { KeysetInfo, Proof } from '@picocash/sdk';
 
-/** Challenge issued by a service (spec/04). */
+/** Challenge issued by a service (PIP-05). */
 export interface PicocashChallenge {
   method: 'picocash';
   realm: string;
@@ -23,7 +23,7 @@ export interface PicocashCredential {
   proofs: Proof[];
 }
 
-/** Receipt the service returns on acceptance (spec/04). */
+/** Receipt the service returns on acceptance (PIP-05). */
 export interface PicocashReceipt {
   method: 'picocash';
   challenge_id: string;
@@ -39,7 +39,7 @@ export interface TrustedMint {
   keyset: KeysetInfo;
 }
 
-/** Structured rejection: `reason` names the failed check from spec/04. */
+/** Structured rejection: `reason` names the failed check from PIP-05. */
 export class CredentialRejected extends Error {
   constructor(
     public readonly reason:

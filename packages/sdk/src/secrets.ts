@@ -12,7 +12,7 @@ export interface PcBind {
 }
 
 /**
- * Challenge-bound secret per spec/04: canonical JSON (fixed key order
+ * Challenge-bound secret per PIP-05: canonical JSON (fixed key order
  * nonce → realm → salt, no whitespace), UTF-8, hex-encoded. The secret itself
  * commits to the challenge, so an intercepted credential replays nowhere.
  */

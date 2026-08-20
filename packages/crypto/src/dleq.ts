@@ -14,7 +14,7 @@ import {
 } from './points.js';
 
 /**
- * DLEQ proofs per spec/01-crypto.md §3 (byte-compatible with Cashu NUT-12).
+ * DLEQ proofs per PIP-00 §3 (byte-compatible with Cashu NUT-12).
  * picocash mints attach one to every blind signature — offline verifiability
  * is what makes accept-then-settle sound.
  */

@@ -12,7 +12,7 @@ export interface VerifiedInput extends ProofInput {
 export function verifyInputs(keyset: Keyset, inputs: ProofInput[]): VerifiedInput[] {
   const seen = new Set<string>();
   return inputs.map((input, index) => {
-    // Single active keyset for now; swap-only keysets join with rotation (spec/02).
+    // Single active keyset for now; swap-only keysets join with rotation (PIP-01).
     if (input.keyset_id !== keyset.id) {
       throw new ApiError(400, 'KEYSET_UNKNOWN', `input ${index}: unknown keyset ${input.keyset_id}`, `fetch GET /v1/keys; this mint's keyset is ${keyset.id}`);
     }
