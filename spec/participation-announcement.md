@@ -1,6 +1,6 @@
 # Announcement: picocash works end to end — come break it
 
-> **Draft of the stage-two community post** (Tempo forum; after the RFC post has had time to gather feedback). Lead with the demo link, ask for participation only now that everything runs. Not yet posted.
+> **Draft of the stage-two community post.** Venue: [tempoxyz/tempo-apps discussions](https://github.com/tempoxyz/tempo-apps/discussions) (the only tempoxyz repo with Discussions — the de-facto community board), after the mpp-specs RFC has had time to gather feedback. Lead with the demo link, ask for participation only now that everything runs. Not yet posted.
 
 ---
 

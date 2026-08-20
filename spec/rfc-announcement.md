@@ -1,6 +1,6 @@
 # RFC: `picocash` — an eCash payment method for MPP
 
-> **Draft of the stage-one community post** (Tempo forum + mpp-specs discussions). Not yet posted; let it sit, then post when it reads right. Keep the ask focused on design feedback, not contribution.
+> **Draft of the stage-one community post.** Venue: an issue on [tempoxyz/mpp-specs](https://github.com/tempoxyz/mpp-specs/issues) — the official MPP spec repo, where method-design review already happens (there is no separate Tempo forum; the community lives on GitHub). Not yet posted; let it sit, then post when it reads right. Keep the ask focused on design feedback, not contribution.
 
 ---
 
