@@ -4,7 +4,9 @@ import {
   decompose,
   MintApiError,
   parsePcBindSecret,
+  parseToken,
   pcBindSecretHex,
+  serializeToken,
   sumProofs,
   verifyProofOffline,
   Wallet,
@@ -108,5 +110,31 @@ describe('Wallet', () => {
     expect(() => decompose(0)).toThrow();
     expect(() => decompose(-5)).toThrow();
     expect(decompose(1_000_000)).toHaveLength(7);
+  });
+});
+
+describe('token serialization (PIP-06)', () => {
+  it('round-trips a bundle through picoA and receives from the string', async () => {
+    const { wallet, proofs } = await fundedWallet(50);
+    const { token, bundle, change } = await wallet.send(proofs, 13, undefined, 'lunch');
+    expect(token.startsWith('picoA')).toBe(true);
+    expect(token).toMatch(/^[A-Za-z0-9_-]+$/); // url/qr-safe, no padding
+    const parsed = parseToken(token);
+    expect(parsed.memo).toBe('lunch');
+    expect(parsed.bundle.proofs.map((p) => p.amount).sort((a, b) => a - b)).toEqual([1, 4, 8]);
+    expect(parsed.bundle).toEqual({ ...bundle, proofs: [...bundle.proofs].sort((a, b) => b.amount - a.amount) });
+
+    const received = await wallet.receive(token);
+    expect(sumProofs(received)).toBe(13);
+    expect(sumProofs(change)).toBe(37);
+  });
+
+  it('rejects garbage, wrong versions, and DLEQ-less proofs', async () => {
+    expect(() => parseToken('cashuAeyJ0b2tlbiI6W119')).toThrow(/pico/);
+    expect(() => parseToken('picoBabc')).toThrow(/unsupported token version/);
+    expect(() => parseToken('picoA!!!')).toThrow(/base64url/);
+    const { wallet, proofs } = await fundedWallet(2);
+    const bare = { mint: wallet.mintUrl, unit: 'x', keyset_id: proofs[0]!.keyset_id, proofs: [{ ...proofs[0]!, dleq: undefined }] };
+    expect(() => serializeToken(bare as any)).toThrow(/DLEQ/);
   });
 });

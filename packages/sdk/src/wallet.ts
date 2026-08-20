@@ -1,4 +1,5 @@
 import { decompose, finalizeSignatures, prepareOutputs, sumProofs, type OutputSpec } from './blinding.js';
+import { parseToken, serializeToken } from './token.js';
 import { verifyProofOffline } from './verify.js';
 import {
   MintApiError,
@@ -129,7 +130,8 @@ export class Wallet {
     proofs: Proof[],
     amount: number,
     secretsForAmount?: string[],
-  ): Promise<{ bundle: TokenBundle; change: Proof[] }> {
+    memo?: string,
+  ): Promise<{ bundle: TokenBundle; token: string; change: Proof[] }> {
     const keyset = await this.getKeyset();
     const total = sumProofs(proofs);
     if (total < amount) throw new Error(`insufficient proofs: have ${total}, need ${amount}`);
@@ -144,18 +146,18 @@ export class Wallet {
       ...(total > amount ? decompose(total - amount).map((a) => ({ amount: a })) : []),
     ];
     const fresh = await this.swap(proofs, specs);
-    return {
-      bundle: { mint: this.mintUrl, unit: keyset.unit, keyset_id: keyset.id, proofs: fresh.slice(0, sendAmounts.length) },
-      change: fresh.slice(sendAmounts.length),
-    };
+    const bundle: TokenBundle = { mint: this.mintUrl, unit: keyset.unit, keyset_id: keyset.id, proofs: fresh.slice(0, sendAmounts.length) };
+    return { bundle, token: serializeToken(bundle, memo), change: fresh.slice(sendAmounts.length) };
   }
 
   /**
    * Claim a received bundle: verify every proof offline (DLEQ), then swap the
    * lot into fresh proofs only this wallet knows — the moment of ownership.
    */
-  async receive(bundle: TokenBundle): Promise<Proof[]> {
+  async receive(input: TokenBundle | string): Promise<Proof[]> {
+    const bundle = typeof input === 'string' ? parseToken(input).bundle : input;
     const keyset = await this.getKeyset();
+    if (bundle.unit !== keyset.unit) throw new Error(`token unit ${bundle.unit} does not match this mint's ${keyset.unit}`);
     for (const [i, proof] of bundle.proofs.entries()) {
       if (!verifyProofOffline(proof, keyset)) {
         throw new Error(`bundle proof ${i} failed offline DLEQ verification — refusing to accept`);

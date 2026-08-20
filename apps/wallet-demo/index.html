@@ -76,10 +76,10 @@
     <h2>Send &amp; receive (offline-verifiable transfer)</h2>
     <label>Amount to send ($)</label>
     <input id="sendAmount" placeholder="0.10">
-    <button id="sendBtn" disabled>Create token bundle</button>
-    <textarea id="sendOut" readonly placeholder="bundle appears here — copy it to the receiver"></textarea>
-    <label style="margin-top:10px">Paste a received bundle</label>
-    <textarea id="recvIn" placeholder='{"mint":…,"proofs":[…]}'></textarea>
+    <button id="sendBtn" disabled>Create token</button>
+    <textarea id="sendOut" readonly placeholder="picoA… token appears here — copy it to the receiver"></textarea>
+    <label style="margin-top:10px">Paste a received token</label>
+    <textarea id="recvIn" placeholder='picoA…'></textarea>
     <button id="recvBtn" disabled>Verify offline &amp; claim</button>
   </div>
 
@@ -317,6 +317,29 @@ $('mintWalletBtn').onclick = async () => {
   $('mintWalletBtn').disabled = false;
 };
 
+// ---- PIP-06 token serialization: "picoA" + base64url(JSON) -------------------
+function b64url(bytes) { let bin = ''; for (const b of bytes) bin += String.fromCharCode(b); return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); }
+function unb64url(str) { const pad = str + '='.repeat((4 - str.length % 4) % 4); return Uint8Array.from(atob(pad.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)); }
+function serializeToken(bundle, memo) {
+  const groups = new Map();
+  for (const pr of bundle.proofs) {
+    if (!pr.dleq?.r) throw new Error('proof has no DLEQ payload — cannot make an offline-verifiable token');
+    const list = groups.get(pr.keyset_id) ?? []; list.push({ a: pr.amount, s: pr.secret, c: pr.C, d: { e: pr.dleq.e, s: pr.dleq.s, r: pr.dleq.r } }); groups.set(pr.keyset_id, list);
+  }
+  const payload = { m: bundle.mint, u: bundle.unit, t: [...groups].map(([i, p]) => ({ i, p: p.sort((x, y) => y.a - x.a) })), ...(memo ? { memo } : {}) };
+  return 'picoA' + b64url(new TextEncoder().encode(JSON.stringify(payload)));
+}
+function parseToken(str) {
+  str = str.trim();
+  if (str.startsWith('{')) { const legacy = JSON.parse(str); return { bundle: legacy }; } // pre-PIP-06 raw JSON
+  if (!str.startsWith('pico')) throw new Error('not a picocash token (expected "pico…")');
+  if (str[4] !== 'A') throw new Error(`unsupported token version "${str[4]}"`);
+  const payload = JSON.parse(new TextDecoder().decode(unb64url(str.slice(5))));
+  const proofs = [];
+  for (const g of payload.t) for (const pr of g.p) proofs.push({ amount: pr.a, keyset_id: g.i, secret: pr.s, C: pr.c, dleq: { e: pr.d.e, s: pr.d.s, r: pr.d.r }, mint: payload.m });
+  return { bundle: { mint: payload.m, unit: payload.u, keyset_id: payload.t[0].i, proofs }, memo: payload.memo };
+}
+
 // ---- swap machinery (shared by send / receive / melt) ----------------------
 function liveTokens() { return tokens.filter((t) => !t.spent); }
 
@@ -368,8 +391,8 @@ $('sendBtn').onclick = async () => {
   try {
     const amount = parseAmountUsd('sendAmount');
     const proofs = await takeExact(amount);
-    $('sendOut').value = JSON.stringify({ mint: mint.url, unit: mint.unit, keyset_id: mint.keyset.id, proofs });
-    log(`bundle of $${(amount / 1e6).toFixed(6)} created — copy it to the receiver (it is a bearer instrument!)`, 'ok');
+    $('sendOut').value = serializeToken({ mint: mint.url, unit: mint.unit, keyset_id: mint.keyset.id, proofs });
+    log(`token of $${(amount / 1e6).toFixed(6)} created (picoA…, ${$('sendOut').value.length} chars) — copy it to the receiver; it is a bearer instrument!`, 'ok');
   } catch (err) { log(err.message, 'err'); }
   $('sendBtn').disabled = false;
 };
@@ -377,8 +400,10 @@ $('sendBtn').onclick = async () => {
 $('recvBtn').onclick = async () => {
   $('recvBtn').disabled = true;
   try {
-    const bundle = JSON.parse($('recvIn').value);
-    if (bundle.keyset_id !== mint.keyset.id) throw new Error(`bundle is from keyset ${bundle.keyset_id}; this mint's is ${mint.keyset.id}`);
+    const { bundle, memo } = parseToken($('recvIn').value);
+    if (bundle.unit && bundle.unit !== mint.unit) throw new Error(`token unit ${bundle.unit} does not match this mint's unit`);
+    if (bundle.keyset_id !== mint.keyset.id) throw new Error(`token is from keyset ${bundle.keyset_id}; this mint's is ${mint.keyset.id}`);
+    if (memo) log(`memo: ${memo}`);
     for (const [i, proof] of bundle.proofs.entries()) {
       const K = mint.keyset.keys[String(proof.amount)];
       if (!K || !verifyDleqOffline(proof, K)) throw new Error(`proof ${i} failed offline DLEQ verification — refusing bundle`);
