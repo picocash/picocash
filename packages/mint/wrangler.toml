@@ -1,0 +1,33 @@
+name = "picocash-mint"
+main = "src/cloudflare/worker.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+# The whole mint runs inside one SQLite-backed Durable Object.
+[[durable_objects.bindings]]
+name = "MINT"
+class_name = "MintDO"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["MintDO"]
+
+# Solvency publisher: the vault's own policy decides whether a run publishes.
+[triggers]
+crons = ["*/10 * * * *"]
+
+[observability]
+enabled = true
+
+# Non-secret config. Secrets (set with `wrangler secret put`):
+#   PICOCASH_MINT_SEED, PICOCASH_OPERATOR_KEY
+[vars]
+PICOCASH_VAULT = "tempo"
+PICOCASH_MINT_NAME = "picocash testnet mint (hosted)"
+PICOCASH_TEMPO_RPC = "https://proxy.tempo.xyz/rpc/42431"
+PICOCASH_TEMPO_CHAIN_ID = "42431"
+PICOCASH_TEMPO_TOKEN = "0x20c0000000000000000000000000000000000000"
+PICOCASH_DEPOSIT_ADDRESS = "0xa19d6eb6Cf54523d021Af96220eBF40DAc56F3f7"
+PICOCASH_MAX_MINT_AMOUNT = "5000000"
+PICOCASH_MAX_OUTSTANDING = "500000000"
+PICOCASH_MELT_FEE = "10000"

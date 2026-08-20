@@ -49,6 +49,22 @@ export interface TempoVaultOptions {
 
 const CHUNK = 10_000n;
 
+/** Public RPCs rate-limit by source IP (shared egress on hosted platforms hits it first). */
+export async function withRetry<T>(fn: () => Promise<T>, attempts = 5, baseMs = 500): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const msg = String(err instanceof Error ? err.message : err);
+      if (!/too many|rate|429|limit/i.test(msg)) throw err;
+      await new Promise((r) => setTimeout(r, baseMs * 2 ** i));
+    }
+  }
+  throw lastErr;
+}
+
 /**
  * Startup check for the unit ↔ token ↔ vault binding (PIP-01): the unit's
  * token address must be a live TIP-20 on this chain, and if the deposit
@@ -70,26 +86,29 @@ export async function verifyTokenBinding(
   });
   const tokenAbi = parseAbi(['function symbol() view returns (string)', 'function decimals() view returns (uint8)']);
 
-  if (!(await client.getCode({ address: tempo.tokenAddress }))) {
+  // Sequential, with backoff: a parallel burst is exactly what trips per-IP limits.
+  if (!(await withRetry(() => client.getCode({ address: tempo.tokenAddress })))) {
     throw new Error(`unit token ${tempo.tokenAddress} has no code on chain ${tempo.chainId} — not a TIP-20`);
   }
-  const [symbol, decimals] = await Promise.all([
-    client.readContract({ address: tempo.tokenAddress, abi: tokenAbi, functionName: 'symbol' }),
-    client.readContract({ address: tempo.tokenAddress, abi: tokenAbi, functionName: 'decimals' }),
-  ]).catch(() => {
+  let symbol: string;
+  let decimals: number;
+  try {
+    symbol = await withRetry(() => client.readContract({ address: tempo.tokenAddress, abi: tokenAbi, functionName: 'symbol' }));
+    decimals = Number(await withRetry(() => client.readContract({ address: tempo.tokenAddress, abi: tokenAbi, functionName: 'decimals' })));
+  } catch {
     throw new Error(`token ${tempo.tokenAddress} does not answer symbol()/decimals() — not a TIP-20`);
-  });
+  }
 
-  if (await client.getCode({ address: tempo.depositAddress })) {
-    const vaultToken = await client
-      .readContract({
+  if (await withRetry(() => client.getCode({ address: tempo.depositAddress }))) {
+    const vaultToken = await withRetry(() =>
+      client.readContract({
         address: tempo.depositAddress,
         abi: parseAbi(['function token() view returns (address)']),
         functionName: 'token',
-      })
-      .catch(() => {
-        throw new Error(`deposit contract ${tempo.depositAddress} exposes no token() — not a picocash vault`);
-      });
+      }),
+    ).catch(() => {
+      throw new Error(`deposit contract ${tempo.depositAddress} exposes no token() — not a picocash vault`);
+    });
     if (vaultToken.toLowerCase() !== tempo.tokenAddress.toLowerCase()) {
       throw new Error(
         `vault ${tempo.depositAddress} is bound to token ${vaultToken}, but the mint's unit expects ${tempo.tokenAddress} — refusing to start`,
@@ -98,13 +117,13 @@ export async function verifyTokenBinding(
     // The exit-tax ceiling is an on-chain commitment; a mint quoting above it
     // is in breach, so refuse to run in that state at all.
     if (meltFee !== undefined) {
-      const cap = await client
-        .readContract({
+      const cap = await withRetry(() =>
+        client.readContract({
           address: tempo.depositAddress,
           abi: parseAbi(['function maxMeltFee() view returns (uint256)']),
           functionName: 'maxMeltFee',
-        })
-        .catch(() => null); // pre-ceiling vault deployments
+        }),
+      ).catch(() => null); // pre-ceiling vault deployments
       if (cap === null) {
         console.warn(`[mint] vault ${tempo.depositAddress} predates the maxMeltFee ceiling — fee cap unverifiable on-chain`);
       } else if (BigInt(meltFee) > cap) {
@@ -116,7 +135,7 @@ export async function verifyTokenBinding(
   } else {
     console.warn(`[mint] deposit address ${tempo.depositAddress} is an EOA (no vault contract) — token binding unverifiable on-chain`);
   }
-  return { symbol, decimals: Number(decimals) };
+  return { symbol, decimals };
 }
 
 /**
@@ -193,18 +212,20 @@ export class TempoVault implements DepositOracle {
   }
 
   private async scan(): Promise<void> {
-    const head = await this.client.getBlockNumber();
+    const head = await withRetry(() => this.client.getBlockNumber());
     const settled = head > this.confirmations ? head - this.confirmations : 0n;
     let cursor = this.cursor ?? (settled > this.lookbackBlocks ? settled - this.lookbackBlocks : 0n);
     while (cursor <= settled) {
       const toBlock = cursor + CHUNK - 1n < settled ? cursor + CHUNK - 1n : settled;
-      const logs = await this.client.getLogs({
-        address: this.tokenAddress,
-        event: transferWithMemoEvent,
-        args: { to: this.depositAddress },
-        fromBlock: cursor,
-        toBlock,
-      });
+      const logs = await withRetry(() =>
+        this.client.getLogs({
+          address: this.tokenAddress,
+          event: transferWithMemoEvent,
+          args: { to: this.depositAddress },
+          fromBlock: cursor,
+          toBlock,
+        }),
+      );
       for (const log of logs) {
         const memo = log.args.memo;
         const amount = log.args.amount;
