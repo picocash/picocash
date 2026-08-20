@@ -29,6 +29,8 @@ export interface MintConfig {
   /** Flat melt fee, base units: burned with the inputs but not paid out, so it
    *  accrues in the vault and reimburses the operator's payout gas. */
   meltFee: number;
+  /** PIP-07 token-link relay (optional capability). */
+  relay: { enabled: boolean; maxBytes: number; ttlSeconds: number; uiUrl: string | undefined };
   quoteTtlSeconds: number;
 }
 
@@ -96,6 +98,12 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MintConfig {
     maxMintAmount: Number(env.PICOCASH_MAX_MINT_AMOUNT ?? 100_000_000), // $100
     maxOutstanding: Number(env.PICOCASH_MAX_OUTSTANDING ?? 0),
     meltFee: Number(env.PICOCASH_MELT_FEE ?? 10_000), // $0.01: ~2–20x observed payout gas on Moderato
+    relay: {
+      enabled: env.PICOCASH_RELAY !== '0',
+      maxBytes: Number(env.PICOCASH_RELAY_MAX_BYTES ?? 16_384),
+      ttlSeconds: Number(env.PICOCASH_RELAY_TTL_SECONDS ?? 86_400),
+      uiUrl: env.PICOCASH_RELAY_UI, // e.g. https://picocash.dev/demo/ — browser hits on /t/:id redirect here
+    },
     quoteTtlSeconds: Number(env.PICOCASH_QUOTE_TTL_SECONDS ?? 900),
   };
 }

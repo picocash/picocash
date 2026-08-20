@@ -14,6 +14,9 @@ export type ErrorCode =
   | 'MELT_ALREADY_PAID'
   | 'PAYOUT_FAILED'
   | 'ATTESTATION_OVERDUE'
+  | 'RELAY_DISABLED'
+  | 'RELAY_NOT_FOUND'
+  | 'PAYLOAD_TOO_LARGE'
   | 'NOT_IMPLEMENTED';
 
 /** Every API error carries a mandatory `recovery` hint for the calling agent. */

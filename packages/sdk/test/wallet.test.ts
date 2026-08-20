@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   canonicalPcBind,
+  createTokenLink,
   decompose,
   MintApiError,
   parsePcBindSecret,
@@ -136,5 +137,36 @@ describe('token serialization (PIP-06)', () => {
     const { wallet, proofs } = await fundedWallet(2);
     const bare = { mint: wallet.mintUrl, unit: 'x', keyset_id: proofs[0]!.keyset_id, proofs: [{ ...proofs[0]!, dleq: undefined }] };
     expect(() => serializeToken(bare as any)).toThrow(/DLEQ/);
+  });
+});
+
+describe('token links (PIP-07)', () => {
+  it('creates a short link, resolves it once, and the relay never sees plaintext', async () => {
+    const { mint, wallet, proofs } = await fundedWallet(40);
+    const { token } = await wallet.send(proofs, 9);
+    const link = await wallet.createLink(token);
+    expect(link).toMatch(/^http:\/\/mint\.test\/t\/[A-Za-z0-9_-]{22}#[A-Za-z0-9_-]{43}$/);
+    expect(link.length).toBeLessThan(120);
+
+    // what the relay stored is ciphertext, not the token
+    const stored = await mint.db.query<{ ct: string }>('SELECT ct FROM relay_blobs');
+    expect(stored.rows).toHaveLength(1);
+    expect(stored.rows[0]!.ct.includes('picoA')).toBe(false);
+    expect(Buffer.from(stored.rows[0]!.ct, 'base64url').toString('utf8').includes('"m"')).toBe(false);
+
+    const received = await wallet.receive(link);
+    expect(sumProofs(received)).toBe(9);
+
+    // burn-after-read
+    await expect(wallet.receive(link)).rejects.toThrow(/RELAY_NOT_FOUND/);
+  });
+
+  it('rejects wrong keys and oversized uploads', async () => {
+    const { wallet, proofs } = await fundedWallet(2);
+    const { token } = await wallet.send(proofs, 1);
+    const link = await wallet.createLink(token);
+    const wrongKey = link.replace(/#.*$/, '#' + 'A'.repeat(43));
+    await expect(wallet.receive(wrongKey)).rejects.toThrow(/could not be decrypted/);
+    await expect(createTokenLink('x'.repeat(20_000), wallet.mintUrl, (wallet as any).fetchImpl)).rejects.toThrow(/PAYLOAD_TOO_LARGE/);
   });
 });

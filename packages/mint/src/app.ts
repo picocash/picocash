@@ -6,6 +6,7 @@ import { ApiError } from './errors.js';
 import { publicKeysJson } from './keyset.js';
 import { meltRoutes } from './routes/melt.js';
 import { mintRoutes } from './routes/mint.js';
+import { relayRoutes } from './routes/relay.js';
 import { swapRoutes } from './routes/swap.js';
 import { computeOutstanding } from './solvency.js';
 import { amountSchema, checkstateRequestSchema, parseBody } from './validation.js';
@@ -42,6 +43,7 @@ export function buildApp(ctx: MintContext): Hono {
       keysets: [{ id: ctx.keyset.id, unit: ctx.keyset.unit, state: 'active' }],
       limits: { max_mint_amount: ctx.config.maxMintAmount },
       fees: { melt: ctx.config.meltFee },
+      relay: ctx.config.relay.enabled ? { enabled: true, max_bytes: ctx.config.relay.maxBytes, ttl_seconds: ctx.config.relay.ttlSeconds } : { enabled: false },
       melt: Boolean(ctx.payout),
       vault:
         ctx.config.vault === 'tempo' && ctx.config.tempo
@@ -87,6 +89,7 @@ export function buildApp(ctx: MintContext): Hono {
   });
 
   app.route('/v1/melt', meltRoutes(ctx));
+  app.route('/', relayRoutes(ctx));
 
   if (ctx.fakeVault) {
     const fakeVault = ctx.fakeVault;

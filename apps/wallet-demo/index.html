@@ -77,9 +77,10 @@
     <label>Amount to send ($)</label>
     <input id="sendAmount" placeholder="0.10">
     <button id="sendBtn" disabled>Create token</button>
-    <textarea id="sendOut" readonly placeholder="picoA… token appears here — copy it to the receiver"></textarea>
-    <label style="margin-top:10px">Paste a received token</label>
-    <textarea id="recvIn" placeholder='picoA…'></textarea>
+    <textarea id="sendOut" readonly placeholder="a short link (or picoA… token) appears here — copy it to the receiver"></textarea>
+    <details><summary>Raw picoA… token (if the receiver can't resolve links)</summary><textarea id="sendRaw" readonly></textarea></details>
+    <label style="margin-top:10px">Paste a received link or token</label>
+    <textarea id="recvIn" placeholder='https://…/t/…#… or picoA…'></textarea>
     <button id="recvBtn" disabled>Verify offline &amp; claim</button>
   </div>
 
@@ -204,6 +205,7 @@ $('connectBtn').onclick = async () => {
     const keyset = (await api('GET', '/v1/keys')).keysets[0];
     mint.unit = info.unit; mint.keyset = keyset; mint.vault = info.vault;
     mint.meltFee = Number(info.fees?.melt ?? 0);
+    mint.relay = Boolean(info.relay?.enabled);
     $('mintInfo').innerHTML = `
       <div class="kv"><b>${info.name}</b> · ${info.version}</div>
       <div class="kv">keyset <b>${keyset.id}</b> · unit ${info.unit}</div>
@@ -340,6 +342,36 @@ function parseToken(str) {
   return { bundle: { mint: payload.m, unit: payload.u, keyset_id: payload.t[0].i, proofs }, memo: payload.memo };
 }
 
+// ---- PIP-07 token links: relay stores ciphertext only; key rides in the URL fragment ----
+async function encryptToken(token) {
+  const keyBytes = crypto.getRandomValues(new Uint8Array(32)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt']);
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(token)));
+  const blob = new Uint8Array(12 + ct.length); blob.set(iv); blob.set(ct, 12);
+  return { ct: b64url(blob), key: b64url(keyBytes) };
+}
+async function decryptToken(ctB64, keyB64) {
+  const blob = unb64url(ctB64);
+  const key = await crypto.subtle.importKey('raw', unb64url(keyB64), 'AES-GCM', false, ['decrypt']);
+  try { return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: blob.slice(0, 12) }, key, blob.slice(12))); }
+  catch { throw new Error('link could not be decrypted — wrong key or tampered payload'); }
+}
+function parseTokenLink(str) {
+  try { const u = new URL(str.trim()); const m = u.pathname.match(/^\/t\/([A-Za-z0-9_-]{22})$/); const k = u.hash.slice(1);
+    return m && /^[A-Za-z0-9_-]{43}$/.test(k) ? { origin: u.origin, id: m[1], key: k } : null; } catch { return null; }
+}
+async function createLink(token) {
+  const { ct, key } = await encryptToken(token);
+  const res = await api('POST', '/v1/relay', { ct });
+  return `${mint.url}/t/${res.id}#${key}`;
+}
+async function resolveLink(link) {
+  const l = parseTokenLink(link);
+  const res = await fetch(`${l.origin}/v1/relay/${l.id}`); const body = await res.json();
+  if (!res.ok) throw new Error(`relay: ${body.error?.code ?? res.status} — ${body.error?.recovery ?? ''}`);
+  return decryptToken(body.ct, l.key);
+}
+
 // ---- swap machinery (shared by send / receive / melt) ----------------------
 function liveTokens() { return tokens.filter((t) => !t.spent); }
 
@@ -391,8 +423,15 @@ $('sendBtn').onclick = async () => {
   try {
     const amount = parseAmountUsd('sendAmount');
     const proofs = await takeExact(amount);
-    $('sendOut').value = serializeToken({ mint: mint.url, unit: mint.unit, keyset_id: mint.keyset.id, proofs });
-    log(`token of $${(amount / 1e6).toFixed(6)} created (picoA…, ${$('sendOut').value.length} chars) — copy it to the receiver; it is a bearer instrument!`, 'ok');
+    const token = serializeToken({ mint: mint.url, unit: mint.unit, keyset_id: mint.keyset.id, proofs });
+    $('sendRaw').value = token;
+    if (mint.relay) {
+      $('sendOut').value = await createLink(token);
+      log(`link of $${(amount / 1e6).toFixed(6)} created (${$('sendOut').value.length} chars) — the relay holds only ciphertext; the key is in the #fragment. Bearer instrument: whoever has the link can claim it.`, 'ok');
+    } else {
+      $('sendOut').value = token;
+      log(`token of $${(amount / 1e6).toFixed(6)} created (picoA…, ${token.length} chars) — this mint runs no relay, so share the string itself`, 'ok');
+    }
   } catch (err) { log(err.message, 'err'); }
   $('sendBtn').disabled = false;
 };
@@ -400,7 +439,9 @@ $('sendBtn').onclick = async () => {
 $('recvBtn').onclick = async () => {
   $('recvBtn').disabled = true;
   try {
-    const { bundle, memo } = parseToken($('recvIn').value);
+    let input = $('recvIn').value.trim();
+    if (parseTokenLink(input)) { log(`resolving link via ${parseTokenLink(input).origin} (burn-after-read)…`); input = await resolveLink(input); }
+    const { bundle, memo } = parseToken(input);
     if (bundle.unit && bundle.unit !== mint.unit) throw new Error(`token unit ${bundle.unit} does not match this mint's unit`);
     if (bundle.keyset_id !== mint.keyset.id) throw new Error(`token is from keyset ${bundle.keyset_id}; this mint's is ${mint.keyset.id}`);
     if (memo) log(`memo: ${memo}`);
@@ -449,6 +490,8 @@ $('checkBtn').onclick = async () => {
   } catch (err) { log(err.message, 'err'); }
 };
 
+// a link pasted into a browser lands here via the relay's redirect: ?link=<origin>/t/<id> plus the original #key
+{ const q = new URLSearchParams(location.search).get('link'); if (q && location.hash.length > 1) { $('recvIn').value = q + location.hash; history.replaceState(null, '', location.pathname); log('token link detected — connect to the mint, then click "Verify offline & claim"', 'warn'); } }
 render();
 log('ready — connect to a mint to begin');
 </script>

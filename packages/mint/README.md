@@ -42,6 +42,8 @@ Config via env: `PICOCASH_MINT_SEED` (32-byte hex; encrypted at rest in real dep
 
 **Melt** (`POST /v1/melt/quote` → `POST /v1/melt`) burns proofs insert-before-pay and pays out through [`PicocashVault.ecashMelt`](https://github.com/picocash/picocash-contracts) — one payout per melt id enforced on-chain, so a failed payout (`OWED`) can be retried with the same inputs without double-pay risk. Deposits go to the vault contract (Moderato: `0xd409D3c16F3472bD75fb86eF3f2D69d602F3cfA3`).
 
+**Token-link relay (PIP-07, optional).** `POST /v1/relay` stores a client-encrypted blob (AES-GCM key stays in the link's `#fragment`, never sent to the server), `GET /v1/relay/:id` returns it exactly once (burn-after-read, TTL-purged), and `GET /t/:id` redirects browsers to a wallet UI (`PICOCASH_RELAY_UI`). The relay cannot decrypt, spend, or link what it stores. Disable with `PICOCASH_RELAY=0`; `/v1/info.relay` advertises the capability.
+
 ```sh
-npm test             # 19 tests incl. double-spend + concurrency races and melt failure/retry
+npm test             # 26 tests incl. double-spend + concurrency races and melt failure/retry
 ```

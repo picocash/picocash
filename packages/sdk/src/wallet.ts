@@ -1,4 +1,5 @@
 import { decompose, finalizeSignatures, prepareOutputs, sumProofs, type OutputSpec } from './blinding.js';
+import { createTokenLink, parseTokenLink, resolveTokenLink } from './link.js';
 import { parseToken, serializeToken } from './token.js';
 import { verifyProofOffline } from './verify.js';
 import {
@@ -154,8 +155,24 @@ export class Wallet {
    * Claim a received bundle: verify every proof offline (DLEQ), then swap the
    * lot into fresh proofs only this wallet knows — the moment of ownership.
    */
+  /**
+   * Turn a token into a short PIP-07 link using this mint's relay (if it runs
+   * one). The relay only ever sees ciphertext; the key is in the fragment.
+   */
+  async createLink(token: string): Promise<string> {
+    const info = await this.info();
+    if (!info?.relay?.enabled) throw new Error('this mint runs no token-link relay; share the token string instead');
+    return createTokenLink(token, this.mintUrl, this.fetchImpl);
+  }
+
   async receive(input: TokenBundle | string): Promise<Proof[]> {
-    const bundle = typeof input === 'string' ? parseToken(input).bundle : input;
+    let bundle: TokenBundle;
+    if (typeof input === 'string') {
+      const token = parseTokenLink(input) ? await resolveTokenLink(input, this.fetchImpl) : input;
+      bundle = parseToken(token).bundle;
+    } else {
+      bundle = input;
+    }
     const keyset = await this.getKeyset();
     if (bundle.unit !== keyset.unit) throw new Error(`token unit ${bundle.unit} does not match this mint's ${keyset.unit}`);
     for (const [i, proof] of bundle.proofs.entries()) {

@@ -41,6 +41,14 @@ CREATE TABLE IF NOT EXISTS spent_secrets (
   spent_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- PIP-07 relay: opaque ciphertext only, burn-after-read, TTL-purged.
+CREATE TABLE IF NOT EXISTS relay_blobs (
+  id TEXT PRIMARY KEY,
+  ct TEXT NOT NULL,
+  expires_at BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS melt_quotes (
   id TEXT PRIMARY KEY,
   amount BIGINT NOT NULL CHECK (amount > 0),
