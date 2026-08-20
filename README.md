@@ -8,7 +8,7 @@
 
 An agent deposits **$1 USDC.e once**, receives bearer tokens, then makes **20 paid API calls** with:
 
-- **sub-100ms payment acceptance** — the service verifies tokens *offline* (DLEQ proofs), then settles with the mint asynchronously. Accept-then-settle, no round-trip on the hot path.
+- **sub-100ms payment acceptance** — the service verifies tokens *offline* (DLEQ proofs), then settles with the mint asynchronously. Accept-then-settle, no round-trip on the hot path. **Measured: ~45ms mean over 20 calls** in the [reference implementation's](packages/mppx-method/) end-to-end test.
 - **no on-chain transaction per call** — one deposit funds many payments; the mint nets out settlement on Tempo periodically.
 - **payer privacy** — the mint cannot link token issuance to redemption (blind signatures), and the service operator sees valid tokens, not a payer address.
 
@@ -29,10 +29,10 @@ The core deliverable is [`spec/04-mpp-method.md`](spec/04-mpp-method.md): a `pic
 | [`spec/`](spec/) | Protocol + MPP method spec + **test vectors** | crypto spec + vectors live; rest draft |
 | [`packages/crypto`](packages/crypto/) | BDHKE, hash-to-curve, DLEQ (secp256k1, `@noble/curves`) | **implemented, tested** |
 | [`packages/mint`](packages/mint/) | Mint server (TypeScript + Hono + Postgres) | **live on Tempo testnet** — mint/swap/melt/checkstate against the deployed vault |
-| [`packages/sdk`](packages/sdk/) | Agent wallet-lite client | skeleton |
-| [`packages/mppx-method`](packages/mppx-method/) | MPP custom method implementation | skeleton |
+| [`packages/sdk`](packages/sdk/) | Agent wallet-lite client | **implemented** — mint/swap/melt/send/receive, offline verification |
+| [`packages/mppx-method`](packages/mppx-method/) | MPP method reference implementation | **implemented** — paid echo service e2e, **~45ms mean offline verification** |
 | [picocash-contracts](https://github.com/picocash/picocash-contracts) | Vault contract (Foundry, Tempo) — separate repo | **deployed to Moderato testnet** |
-| [`apps/wallet-demo`](apps/wallet-demo/) | Static HTML wallet: mint / melt / transfer | **mint flow works on Tempo testnet** — $1 deposit → tokens, DLEQ verified in-browser |
+| [`apps/wallet-demo`](apps/wallet-demo/) | Static HTML wallet | **complete on Tempo testnet** — mint, offline-verified transfer, and melt in-browser |
 | [`apps/reference`](apps/reference/) | picocash.app reference mint deployment | skeleton |
 
 ## Test vectors

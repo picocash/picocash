@@ -1,6 +1,6 @@
 # 04 — MPP payment method: `picocash`
 
-**Status: DRAFT under RFC.** This document is the picocash differentiator: a binding of Chaumian ecash to MPP's challenge → credential → receipt flow, giving services **sub-100ms offline-verified payment acceptance** with no on-chain transaction per call and no payer identity exposure. Field names and exact envelope framing will track the mppx custom-method interface (see [mpp.dev](https://mpp.dev)); the shapes below are the proposal.
+**Status: DRAFT under RFC — reference implementation in [`packages/mppx-method`](../packages/mppx-method/).** This document is the picocash differentiator: a binding of Chaumian ecash to MPP's challenge → credential → receipt flow, giving services **sub-100ms offline-verified payment acceptance** (measured ~45ms mean in the reference implementation) with no on-chain transaction per call and no payer identity exposure. Field names and exact envelope framing will track the mppx custom-method interface (see [mpp.dev](https://mpp.dev)); the shapes below are the proposal.
 
 ## Flow overview
 

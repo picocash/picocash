@@ -7,6 +7,17 @@ import { FakePayout, TempoPayout, type PayoutExecutor } from './payout.js';
 import { TempoVault, verifyTokenBinding } from './vault-tempo.js';
 import { FakeVault, type DepositOracle } from './vault.js';
 
+// Library surface: lets sibling packages (SDK, MPP method) spin an in-process
+// mint for their test suites without HTTP or a chain.
+export { buildApp } from './app.js';
+export { loadConfig, tip20Unit, type MintConfig } from './config.js';
+export { createPgDb, createPgliteDb, migrate, type Db } from './db.js';
+export { deriveKeyset, publicKeysJson, type Keyset } from './keyset.js';
+export { FakePayout, TempoPayout, type PayoutExecutor } from './payout.js';
+export { TempoVault, verifyTokenBinding } from './vault-tempo.js';
+export { FakeVault, type DepositOracle } from './vault.js';
+export type { MintContext } from './context.js';
+
 export async function main(): Promise<void> {
   try {
     process.loadEnvFile();

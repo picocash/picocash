@@ -1,8 +1,33 @@
 {
   "name": "@picocash/mppx-method",
-  "version": "0.0.0",
-  "private": true,
-  "description": "MPP custom payment method 'picocash' (mppx) — build step 8, not yet started; spec draft lives in spec/04-mpp-method.md",
+  "version": "0.1.0",
+  "description": "MPP custom payment method 'picocash': challenge → credential → receipt with sub-100ms offline verification and accept-then-settle (spec/04)",
   "license": "Apache-2.0",
-  "type": "module"
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --fileParallelism=false"
+  },
+  "dependencies": {
+    "@picocash/crypto": "*",
+    "@picocash/sdk": "*"
+  },
+  "devDependencies": {
+    "@noble/hashes": "^1.8.0",
+    "@picocash/mint": "*",
+    "hono": "^4.6.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
 }

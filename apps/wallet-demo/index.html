@@ -73,6 +73,27 @@
   </div>
 
   <div class="card">
+    <h2>Send &amp; receive (offline-verifiable transfer)</h2>
+    <label>Amount to send ($)</label>
+    <input id="sendAmount" placeholder="0.10">
+    <button id="sendBtn" disabled>Create token bundle</button>
+    <textarea id="sendOut" readonly placeholder="bundle appears here — copy it to the receiver"></textarea>
+    <label style="margin-top:10px">Paste a received bundle</label>
+    <textarea id="recvIn" placeholder='{"mint":…,"proofs":[…]}'></textarea>
+    <button id="recvBtn" disabled>Verify offline &amp; claim</button>
+  </div>
+
+  <div class="card">
+    <h2>Melt (withdraw to Tempo testnet)</h2>
+    <label>Amount ($)</label>
+    <input id="meltAmount" placeholder="0.25">
+    <label>Payout address (0x…)</label>
+    <input id="meltTo" placeholder="0x…">
+    <button id="meltBtn" disabled>Melt to on-chain funds</button>
+    <div id="meltInfo"></div>
+  </div>
+
+  <div class="card">
     <h2>Log</h2>
     <div id="log"></div>
   </div>
@@ -126,6 +147,18 @@ function verifyDleq(B_hex, C_hex, K_hex, dleq) {
 }
 const yOf = (secretHex) => bytesToHex(hashToCurve(hexToBytes(secretHex)).toRawBytes(true));
 
+// proof-side (offline) DLEQ: reconstruct B_/C_ from the blinding factor r
+function verifyDleqOffline(proof, K_hex) {
+  try {
+    if (!proof.dleq?.r) return false;
+    const r = toBig(hexToBytes(proof.dleq.r));
+    const Kp = Point.fromHex(K_hex);
+    const B_ = hashToCurve(hexToBytes(proof.secret)).add(Point.BASE.multiply(r));
+    const C_ = Point.fromHex(proof.C).add(Kp.multiply(r));
+    return verifyDleq(bytesToHex(B_.toRawBytes(true)), bytesToHex(C_.toRawBytes(true)), K_hex, proof.dleq);
+  } catch { return false; }
+}
+
 // ---- state -----------------------------------------------------------------
 const $ = (id) => document.getElementById(id);
 const AMOUNT = 1_000_000; // $1 in 6-decimal base units
@@ -176,6 +209,11 @@ $('connectBtn').onclick = async () => {
       <div class="kv">vault ${typeof info.vault === 'object' ? `tempo chain <b>${info.vault.chain_id}</b> · token ${info.vault.token}` : info.vault}</div>`;
     $('mintKeyBtn').disabled = false;
     $('mintWalletBtn').disabled = typeof info.vault !== 'object';
+    $('sendBtn').disabled = $('recvBtn').disabled = false;
+    $('meltBtn').disabled = typeof info.vault !== 'object' && !info.melt;
+    let stale = 0;
+    for (const t of tokens) if (t.keyset_id !== keyset.id && !t.spent) { t.spent = 'stale'; stale++; }
+    if (stale) { saveTokens(); log(`${stale} token(s) from a rotated keyset marked stale`, 'warn'); }
     log(`connected to ${info.name} (keyset ${keyset.id})`, 'ok');
     render();
   } catch (err) { log(`connect failed: ${err.message}`, 'err'); }
@@ -222,7 +260,11 @@ async function payAndMint(sendPayment) {
     const p = pending[i];
     const K = mint.keyset.keys[String(p.amount)];
     if (!verifyDleq(p.B_, sig.C_, K, sig.dleq)) throw new Error(`DLEQ failed for output ${i} — rejecting signature`);
-    tokens.push({ amount: p.amount, keyset_id: mint.keyset.id, secret: p.secret, C: unblind(sig.C_, p.r, K), mint: mint.url });
+    tokens.push({
+      amount: p.amount, keyset_id: mint.keyset.id, secret: p.secret,
+      C: unblind(sig.C_, p.r, K), mint: mint.url,
+      dleq: { e: sig.dleq.e, s: sig.dleq.s, r: bytesToHex(p.r) }, // r makes the proof offline-verifiable by a receiver
+    });
   }
   saveTokens();
   log(`minted ${minted.signatures.length} proofs, all DLEQs verified in-browser — balance updated`, 'ok');
@@ -272,6 +314,102 @@ $('mintWalletBtn').onclick = async () => {
     });
   } catch (err) { log(err.message, 'err'); }
   $('mintWalletBtn').disabled = false;
+};
+
+// ---- swap machinery (shared by send / receive / melt) ----------------------
+function liveTokens() { return tokens.filter((t) => !t.spent); }
+
+/** Swap `inputs` into fresh proofs of `amounts`; returns the new proofs. */
+async function swapInto(inputs, amounts) {
+  const pending = amounts.map((amount) => {
+    const secret = bytesToHex(secp256k1.utils.randomPrivateKey());
+    const { B_, r } = blind(hexToBytes(secret));
+    return { amount, secret, r, B_ };
+  });
+  const res = await api('POST', '/v1/swap', {
+    inputs: inputs.map((t) => ({ amount: t.amount, keyset_id: t.keyset_id, secret: t.secret, C: t.C })),
+    outputs: pending.map((p) => ({ amount: p.amount, keyset_id: mint.keyset.id, B_: p.B_ })),
+  });
+  return res.signatures.map((sig, i) => {
+    const p = pending[i];
+    const K = mint.keyset.keys[String(p.amount)];
+    if (!verifyDleq(p.B_, sig.C_, K, sig.dleq)) throw new Error(`DLEQ failed on swap output ${i}`);
+    return {
+      amount: p.amount, keyset_id: mint.keyset.id, secret: p.secret,
+      C: unblind(sig.C_, p.r, K), mint: mint.url,
+      dleq: { e: sig.dleq.e, s: sig.dleq.s, r: bytesToHex(p.r) },
+    };
+  });
+}
+
+/** Swap the whole live balance into exactly `amount` + change; returns the exact part. */
+async function takeExact(amount) {
+  const inputs = liveTokens();
+  const total = inputs.reduce((s, t) => s + t.amount, 0);
+  if (total < amount) throw new Error(`insufficient balance: have $${(total / 1e6).toFixed(6)}, need $${(amount / 1e6).toFixed(6)}`);
+  const wanted = decompose(amount);
+  const change = total > amount ? decompose(total - amount) : [];
+  const fresh = await swapInto(inputs, [...wanted, ...change]);
+  tokens = tokens.filter((t) => t.spent); // all live inputs were consumed
+  tokens.push(...fresh.slice(wanted.length));
+  saveTokens();
+  return fresh.slice(0, wanted.length);
+}
+
+function parseAmountUsd(inputId) {
+  const amount = Math.round(parseFloat($(inputId).value) * 1e6);
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error('enter a positive dollar amount');
+  return amount;
+}
+
+$('sendBtn').onclick = async () => {
+  $('sendBtn').disabled = true;
+  try {
+    const amount = parseAmountUsd('sendAmount');
+    const proofs = await takeExact(amount);
+    $('sendOut').value = JSON.stringify({ mint: mint.url, unit: mint.unit, keyset_id: mint.keyset.id, proofs });
+    log(`bundle of $${(amount / 1e6).toFixed(6)} created — copy it to the receiver (it is a bearer instrument!)`, 'ok');
+  } catch (err) { log(err.message, 'err'); }
+  $('sendBtn').disabled = false;
+};
+
+$('recvBtn').onclick = async () => {
+  $('recvBtn').disabled = true;
+  try {
+    const bundle = JSON.parse($('recvIn').value);
+    if (bundle.keyset_id !== mint.keyset.id) throw new Error(`bundle is from keyset ${bundle.keyset_id}; this mint's is ${mint.keyset.id}`);
+    for (const [i, proof] of bundle.proofs.entries()) {
+      const K = mint.keyset.keys[String(proof.amount)];
+      if (!K || !verifyDleqOffline(proof, K)) throw new Error(`proof ${i} failed offline DLEQ verification — refusing bundle`);
+    }
+    log(`all ${bundle.proofs.length} proofs verified OFFLINE — claiming via swap…`, 'ok');
+    const total = bundle.proofs.reduce((s, p) => s + p.amount, 0);
+    const fresh = await swapInto(bundle.proofs, decompose(total));
+    tokens.push(...fresh);
+    saveTokens();
+    $('recvIn').value = '';
+    log(`claimed $${(total / 1e6).toFixed(6)} — the sender's copies are now worthless`, 'ok');
+  } catch (err) { log(err.message, 'err'); }
+  $('recvBtn').disabled = false;
+};
+
+$('meltBtn').onclick = async () => {
+  $('meltBtn').disabled = true;
+  try {
+    const amount = parseAmountUsd('meltAmount');
+    const to = $('meltTo').value.trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(to)) throw new Error('enter a 20-byte 0x… payout address');
+    const proofs = await takeExact(amount);
+    const quote = await api('POST', '/v1/melt/quote', { amount, unit: mint.unit, to });
+    log(`melt quote ${quote.melt_id.slice(0, 16)}… — burning proofs and requesting vault payout`);
+    const melted = await api('POST', '/v1/melt', {
+      melt_id: quote.melt_id,
+      inputs: proofs.map((t) => ({ amount: t.amount, keyset_id: t.keyset_id, secret: t.secret, C: t.C })),
+    });
+    $('meltInfo').innerHTML = `<div class="kv">melt <b>${melted.state}</b> — tx <b>${melted.tx_hash ?? '(pending)'}</b></div>`;
+    log(`melt ${melted.state}: $${(amount / 1e6).toFixed(6)} paid to ${to} (tx ${melted.tx_hash})`, 'ok');
+  } catch (err) { log(err.message, 'err'); }
+  $('meltBtn').disabled = false;
 };
 
 $('checkBtn').onclick = async () => {

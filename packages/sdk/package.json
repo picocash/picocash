@@ -1,8 +1,31 @@
 {
   "name": "@picocash/sdk",
-  "version": "0.0.0",
-  "private": true,
-  "description": "picocash agent wallet-lite client SDK — build step 6, not yet started",
+  "version": "0.1.0",
+  "description": "Agent wallet-lite for picocash: mint, swap, melt, offline verification, and challenge-bound payments. Stateless-capable — token storage is the caller's responsibility.",
   "license": "Apache-2.0",
-  "type": "module"
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --fileParallelism=false"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.8.0",
+    "@picocash/crypto": "*"
+  },
+  "devDependencies": {
+    "@picocash/mint": "*",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
 }
