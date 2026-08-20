@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import type { MintContext } from '../context.js';
 import { ApiError } from '../errors.js';
 import { loadIssuedSignatures, signAndRecord, sumAmounts, validateOutputs } from '../signing.js';
+import { computeOutstanding } from '../solvency.js';
 import { mintQuoteRequestSchema, mintRequestSchema, parseBody } from '../validation.js';
 
 interface QuoteRow {
@@ -72,6 +73,13 @@ export function mintRoutes(ctx: MintContext): Hono {
     }
     if (body.amount > ctx.config.maxMintAmount) {
       throw new ApiError(400, 'AMOUNT_LIMIT', `amount exceeds the per-quote limit of ${ctx.config.maxMintAmount}`, 'request a smaller amount, or split across multiple quotes');
+    }
+    // Reference-mint hard cap: global outstanding supply (showcase, not a bank).
+    if (ctx.config.maxOutstanding > 0) {
+      const outstanding = await computeOutstanding(ctx.db, ctx.keyset.id);
+      if (outstanding + body.amount > ctx.config.maxOutstanding) {
+        throw new ApiError(400, 'AMOUNT_LIMIT', `this mint caps outstanding supply at ${ctx.config.maxOutstanding} (currently ${outstanding})`, 'melt some tokens first, request a smaller amount, or use another mint; see GET /v1/solvency');
+      }
     }
     const id = randomBytes(32).toString('hex'); // 32 bytes: fits a TIP-20 bytes32 memo exactly
     const expiresAt = nowSeconds() + ctx.config.quoteTtlSeconds;

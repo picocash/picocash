@@ -69,11 +69,34 @@ export class PicocashAcceptor {
    * The offline verification pipeline, in spec/04 order. Throws
    * CredentialRejected naming the failed check; returns a `pending` receipt on
    * success and marks the challenge paid (single-use).
+   *
+   * `externalChallenge` supports transports (like mppx) where the framework —
+   * not this acceptor — issues and integrity-checks the challenge: pass the
+   * reconstructed challenge and the acceptor adopts it, keeping only the
+   * single-use and duplicate-token state itself.
    */
-  verifyCredential(credential: PicocashCredential): PicocashReceipt {
-    // 1. challenge known, unexpired, never previously accepted
-    const state = this.challenges.get(credential.challenge_id);
+  verifyCredential(credential: PicocashCredential, externalChallenge?: PicocashChallenge): PicocashReceipt {
+    return this.process(credential, externalChallenge, true);
+  }
+
+  /** Non-mutating pre-check: runs every check, consumes nothing. */
+  precheckCredential(credential: PicocashCredential, externalChallenge?: PicocashChallenge): PicocashChallenge {
+    this.process(credential, externalChallenge, false);
+    return this.resolveChallenge(credential, externalChallenge).challenge;
+  }
+
+  private resolveChallenge(credential: PicocashCredential, externalChallenge?: PicocashChallenge): ChallengeState {
+    let state = this.challenges.get(credential.challenge_id);
+    if (!state && externalChallenge && externalChallenge.challenge_id === credential.challenge_id) {
+      state = { challenge: externalChallenge };
+    }
     if (!state) throw new CredentialRejected('UNKNOWN_CHALLENGE', `no challenge ${credential.challenge_id}`);
+    return state;
+  }
+
+  private process(credential: PicocashCredential, externalChallenge: PicocashChallenge | undefined, consume: boolean): PicocashReceipt {
+    // 1. challenge known, unexpired, never previously accepted
+    const state = this.resolveChallenge(credential, externalChallenge);
     const { challenge } = state;
     if (state.receipt) throw new CredentialRejected('CHALLENGE_ALREADY_PAID', 'challenge is single-use and already paid');
     if (challenge.expiry < nowSeconds()) throw new CredentialRejected('CHALLENGE_EXPIRED', 'challenge expired; request a new one');
@@ -113,7 +136,6 @@ export class PicocashAcceptor {
       throw new CredentialRejected('DUPLICATE_TOKEN', 'a proof in this credential was already presented');
     }
 
-    for (const y of ys) this.seenYs.add(y);
     const receipt: PicocashReceipt = {
       method: 'picocash',
       challenge_id: challenge.challenge_id,
@@ -122,8 +144,12 @@ export class PicocashAcceptor {
       settlement: 'pending',
       checkstate_ref: null,
     };
-    state.credential = credential;
-    state.receipt = receipt;
+    if (consume) {
+      for (const y of ys) this.seenYs.add(y);
+      state.credential = credential;
+      state.receipt = receipt;
+      this.challenges.set(challenge.challenge_id, state); // adopt external challenges
+    }
     return receipt;
   }
 

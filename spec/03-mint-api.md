@@ -94,6 +94,10 @@ Request `{ "inputs": [Proof…], "outputs": [BlindedMessage…] }`. Rules:
 
 Response `{ "signatures": [BlindSignature…] }`.
 
+### `GET /v1/solvency`
+
+The liability side of proof of liabilities, public: `{ "keyset_id", "unit", "outstanding", "vault": { "chain_id", "address", "token" } }` where `outstanding = Σ issued blind signatures − Σ spent secrets` (swaps are neutral; mints issue; melts spend). Anyone can compare `outstanding` to the vault's on-chain token balance; the mint's operator publishes the same figure on-chain per epoch via `vault.publishOutstandingSupply`. A mint MAY cap outstanding supply (`AMOUNT_LIMIT` at quote time, reference mints MUST).
+
 ### `POST /v1/checkstate`
 
 Request `{ "Ys": ["02…", …] }` — `Y = hash_to_curve(secret)` values, never secrets. Response `{ "states": [ { "y": "02…", "state": "UNSPENT" | "SPENT" } ] }` (`PENDING` reserved for melt).

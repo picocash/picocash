@@ -26,6 +26,7 @@ export async function makeTestMint() {
     vault: 'fake',
     fakeVault: true,
     maxMintAmount: 100_000_000,
+    maxOutstanding: 0,
     quoteTtlSeconds: 900,
   };
   const keyset = deriveKeyset(config.seed, config.unit);

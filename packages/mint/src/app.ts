@@ -7,6 +7,7 @@ import { publicKeysJson } from './keyset.js';
 import { meltRoutes } from './routes/melt.js';
 import { mintRoutes } from './routes/mint.js';
 import { swapRoutes } from './routes/swap.js';
+import { computeOutstanding } from './solvency.js';
 import { amountSchema, checkstateRequestSchema, parseBody } from './validation.js';
 
 export function buildApp(ctx: MintContext): Hono {
@@ -59,6 +60,18 @@ export function buildApp(ctx: MintContext): Hono {
       throw new ApiError(404, 'KEYSET_UNKNOWN', `no keyset ${c.req.param('id')}`, `this mint's active keyset is ${ctx.keyset.id}; see GET /v1/keys`);
     }
     return c.json(keysetJson());
+  });
+
+  // Transparency endpoint: the liability side of proof of liabilities.
+  // Anyone can compare this to the vault's on-chain balance (spec/05).
+  app.get('/v1/solvency', async (c) => {
+    const outstanding = await computeOutstanding(ctx.db, ctx.keyset.id);
+    return c.json({
+      keyset_id: ctx.keyset.id,
+      unit: ctx.keyset.unit,
+      outstanding,
+      vault: ctx.config.tempo ? { chain_id: ctx.config.tempo.chainId, address: ctx.config.tempo.depositAddress, token: ctx.config.tempo.tokenAddress } : 'fake',
+    });
   });
 
   app.route('/v1/mint', mintRoutes(ctx));

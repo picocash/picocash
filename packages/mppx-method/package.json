@@ -1,7 +1,7 @@
 {
   "name": "@picocash/mppx-method",
   "version": "0.1.0",
-  "description": "MPP custom payment method 'picocash': challenge → credential → receipt with sub-100ms offline verification and accept-then-settle (spec/04)",
+  "description": "MPP custom payment method 'picocash': challenge \u2192 credential \u2192 receipt with sub-100ms offline verification and accept-then-settle (spec/04)",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
@@ -10,6 +10,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./mppx": {
+      "types": "./dist/mppx.d.ts",
+      "import": "./dist/mppx.js"
     }
   },
   "files": [
@@ -28,6 +32,17 @@
     "@picocash/mint": "*",
     "hono": "^4.6.0",
     "typescript": "^5.6.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "mppx": "^0.8.17",
+    "zod": "^4.4.3",
+    "viem": "^2.55.19"
+  },
+  "peerDependencies": {
+    "mppx": ">=0.8.0"
+  },
+  "peerDependenciesMeta": {
+    "mppx": {
+      "optional": true
+    }
   }
 }

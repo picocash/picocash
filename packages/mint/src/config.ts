@@ -24,6 +24,8 @@ export interface MintConfig {
   tempo?: TempoConfig;
   /** Max amount per mint quote, base units. */
   maxMintAmount: number;
+  /** Global outstanding-supply cap, base units; 0 = uncapped. Reference mints MUST set this. */
+  maxOutstanding: number;
   quoteTtlSeconds: number;
 }
 
@@ -89,6 +91,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MintConfig {
     fakeVault,
     ...(vault === 'tempo' ? { tempo: loadTempoConfig(env) } : {}),
     maxMintAmount: Number(env.PICOCASH_MAX_MINT_AMOUNT ?? 100_000_000), // $100
+    maxOutstanding: Number(env.PICOCASH_MAX_OUTSTANDING ?? 0),
     quoteTtlSeconds: Number(env.PICOCASH_QUOTE_TTL_SECONDS ?? 900),
   };
 }

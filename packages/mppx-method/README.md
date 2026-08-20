@@ -18,6 +18,8 @@ Measured in the test suite: **one $1 deposit funds 20 paid calls with mean offli
 
 The double-spend exposure of accept-then-settle is bounded and tested: a payer who re-swaps their bound proofs before settlement produces a `double-spent` receipt at settle time — recourse is service-level, and per-call amounts keep the window small.
 
-Status: implements the spec shapes directly; the thin adapter onto the `mppx` custom-method interface lands when that binding is pinned (consult the MPP docs MCP server: `claude mcp add --transport http mpp https://mpp.dev/api/mcp`).
+## mppx binding
 
-`npm test` runs the paid-echo-service end-to-end against an in-process mint.
+`@picocash/mppx-method/mppx` plugs the method into [mppx](https://mpp.dev) (peer dependency): `picocashMethod` is the `Method.from` wire definition, `picocash({ wallet, getProofs, onChange })` the client method (creates `Authorization: Payment …` credentials), and `picocashCharge({ acceptor })` the server method using mppx's modern split — `validate` maps to the acceptor's non-mutating offline pre-check, `broadcast` to the terminal offline accept (settlement stays async via `acceptor.settle()`). The challenge nonce rides in the method's `request` schema; inject a fresh one per challenge (`freshNonce()`) via the server's `request` hook. Tested through mppx's own `Credential.serialize` / `Method.validateCredential` / `Method.broadcastCredential` pipeline.
+
+`npm test` runs the paid-echo-service end-to-end and the mppx adapter round trip against an in-process mint.
