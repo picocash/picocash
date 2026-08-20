@@ -112,7 +112,7 @@ Melt burns proofs and pays out the unit's TIP-20 token from the vault.
 
 - Every input verifies like a swap input; `sum(inputs) == amount` exactly (`AMOUNT_MISMATCH`; no fees in v0.1 — the payout gas is the operator's).
 - **Insert-before-pay**: input `Y`s enter the spent-secret ledger inside one DB transaction *before* any on-chain payout is attempted. A conflict aborts with `TOKEN_ALREADY_SPENT` and nothing is paid.
-- Then the mint calls `vault.withdraw(to, amount, meltId)` as operator. On success → `{ "state": "PAID", "tx_hash": "0x…" }`.
+- Then the mint calls `vault.ecashMelt(to, amount, meltId)` as operator. On success → `{ "state": "PAID", "tx_hash": "0x…" }`.
 - If the chain call fails, the melt is recorded as `OWED` (`PAYOUT_FAILED`, HTTP 502): the tokens are consumed and the debt is durable. **Retry by re-POSTing the same `melt_id` with the same inputs** — the mint verifies the input set matches (hash), skips re-spending, and re-attempts the payout. The vault's per-meltId guard makes double-payout impossible even across retries.
 - A `PAID` melt replayed with the same inputs returns the same result idempotently; different inputs → `MELT_ALREADY_PAID`.
 

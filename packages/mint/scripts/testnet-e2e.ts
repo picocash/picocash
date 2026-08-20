@@ -145,7 +145,7 @@ const balanceBefore = await publicClient.readContract({
 const meltQuote = await api('POST', '/v1/melt/quote', { amount: meltAmount, unit: info.unit, to: account.address });
 console.log(`melt quote ${meltQuote.melt_id.slice(0, 16)}… for ${meltAmount} → ${account.address}`);
 const melted = await api('POST', '/v1/melt', { melt_id: meltQuote.melt_id, inputs: changeProofs });
-console.log(`melt ${melted.state}: vault.withdraw tx ${melted.tx_hash}`);
+console.log(`melt ${melted.state}: vault.ecashMelt tx ${melted.tx_hash}`);
 const balanceAfter = await publicClient.readContract({
   address: quote.deposit.token, abi: balanceOfAbi, functionName: 'balanceOf', args: [account.address],
 });

@@ -12,7 +12,7 @@ export interface PayoutExecutor {
   execute(to: string, amount: number, meltId: string): Promise<string>;
 }
 
-const vaultAbi = parseAbi(['function withdraw(address to, uint256 amount, bytes32 meltId)']);
+const vaultAbi = parseAbi(['function ecashMelt(address to, uint256 amount, bytes32 meltId)']);
 
 export class TempoPayout implements PayoutExecutor {
   private readonly wallet;
@@ -36,11 +36,11 @@ export class TempoPayout implements PayoutExecutor {
     const hash = await this.wallet.writeContract({
       address: this.vaultAddress,
       abi: vaultAbi,
-      functionName: 'withdraw',
+      functionName: 'ecashMelt',
       args: [to as `0x${string}`, BigInt(amount), `0x${meltId}` as `0x${string}`],
     });
     const receipt = await this.publicClient.waitForTransactionReceipt({ hash, timeout: 60_000 });
-    if (receipt.status !== 'success') throw new Error(`vault.withdraw reverted: ${hash}`);
+    if (receipt.status !== 'success') throw new Error(`vault.ecashMelt reverted: ${hash}`);
     return hash;
   }
 }
