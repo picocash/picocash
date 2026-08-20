@@ -2,10 +2,16 @@
  * Proof of liabilities (spec/05): read outstanding supply from the running
  * mint's public /v1/solvency endpoint, verify the invariant against the
  * vault's on-chain balance, and publish it via vault.publishOutstandingSupply.
- * Run per epoch (cron).
  *
- *   npx tsx scripts/publish-solvency.ts          # check + publish
- *   npx tsx scripts/publish-solvency.ts --check  # check only
+ * The vault carries a deploy-time publication policy (drift threshold and/or
+ * block interval); this script polls vault.isPublicationDue() and publishes
+ * only when the policy calls for it — so run it from cron as often as you
+ * like (every minute is fine), and transactions happen exactly when they
+ * carry information.
+ *
+ *   npx tsx scripts/publish-solvency.ts          # publish if due
+ *   npx tsx scripts/publish-solvency.ts --force  # publish regardless
+ *   npx tsx scripts/publish-solvency.ts --check  # report only, never publish
  *
  * Env: MINT_URL (default http://localhost:3338), PICOCASH_OPERATOR_KEY +
  * PICOCASH_TEMPO_RPC from .env for publishing.
@@ -44,16 +50,26 @@ const vaultBalance = await publicClient.readContract({
   args: [solvency.vault.address],
 });
 
+const [due, overdue] = await Promise.all([
+  publicClient.readContract({ address: solvency.vault.address, abi: parseAbi(['function isPublicationDue() view returns (bool)']), functionName: 'isPublicationDue' }),
+  publicClient.readContract({ address: solvency.vault.address, abi: parseAbi(['function isPublicationOverdue() view returns (bool)']), functionName: 'isPublicationOverdue' }),
+]);
+
 const solvent = vaultBalance >= BigInt(solvency.outstanding);
 console.log(`keyset ${solvency.keyset_id} (${solvency.unit})`);
 console.log(`outstanding tokens : ${solvency.outstanding} base units ($${(solvency.outstanding / 1e6).toFixed(6)})`);
 console.log(`vault balance      : ${vaultBalance} base units ($${(Number(vaultBalance) / 1e6).toFixed(6)})`);
 console.log(`solvency invariant : vault ≥ outstanding → ${solvent ? 'HOLDS' : 'VIOLATED'}`);
+console.log(`publication policy : due=${due} overdue=${overdue}`);
 if (!solvent) {
   console.error('SOLVENCY VIOLATION — refusing to publish; investigate immediately');
   process.exit(2);
 }
 if (process.argv.includes('--check')) process.exit(0);
+if (!due && !process.argv.includes('--force')) {
+  console.log('not due per the vault policy — nothing to publish (use --force to override)');
+  process.exit(0);
+}
 
 const operatorKey = process.env.PICOCASH_OPERATOR_KEY as `0x${string}` | undefined;
 if (!operatorKey) throw new Error('PICOCASH_OPERATOR_KEY required to publish');
