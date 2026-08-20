@@ -30,7 +30,10 @@ export interface ChainReader {
     fromBlock: bigint;
     toBlock: bigint;
   }): Promise<TransferLog[]>;
+  readContract?(args: { address: `0x${string}`; abi: unknown; functionName: string }): Promise<unknown>;
 }
+
+const overdueAbi = parseAbi(['function isPublicationOverdue() view returns (bool)']);
 
 export interface TempoVaultOptions {
   rpcUrl: string;
@@ -121,7 +124,9 @@ export class TempoVault implements DepositOracle {
     this.lookbackBlocks = options.lookbackBlocks ?? 5_000n;
     this.client =
       options.client ??
-      createPublicClient({
+      // viem's readContract generics don't structurally match the minimal
+      // ChainReader slice; runtime shape is identical.
+      (createPublicClient({
         chain: defineChain({
           id: options.chainId,
           name: `tempo-${options.chainId}`,
@@ -129,7 +134,7 @@ export class TempoVault implements DepositOracle {
           rpcUrls: { default: { http: [options.rpcUrl] } },
         }),
         transport: http(options.rpcUrl),
-      });
+      }) as unknown as ChainReader);
   }
 
   async getDeposit(quoteId: string): Promise<Deposit | null> {
@@ -140,6 +145,25 @@ export class TempoVault implements DepositOracle {
       throw new Error(`deposit for quote ${quoteId} exceeds safe integer range`);
     }
     return { amount: Number(hit.amount), txRef: hit.txRef };
+  }
+
+  private overdueCache: { value: boolean; at: number } | null = null;
+
+  /**
+   * Mirrors vault.isPublicationOverdue(), cached for 30s. The vault gates
+   * allowance deposits on this; the mint mirrors it by refusing new quotes,
+   * covering the memo-transfer path the contract cannot intercept.
+   */
+  async isPublicationOverdue(): Promise<boolean> {
+    if (this.overdueCache && Date.now() - this.overdueCache.at < 30_000) return this.overdueCache.value;
+    if (!this.client.readContract) return false; // test stubs without contract reads
+    const value = (await this.client.readContract({
+      address: this.depositAddress,
+      abi: overdueAbi,
+      functionName: 'isPublicationOverdue',
+    })) as boolean;
+    this.overdueCache = { value, at: Date.now() };
+    return value;
   }
 
   private refresh(): Promise<void> {

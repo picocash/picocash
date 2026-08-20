@@ -11,6 +11,8 @@ export interface Deposit {
  */
 export interface DepositOracle {
   getDeposit(quoteId: string): Promise<Deposit | null>;
+  /** Vault publication-policy breach (spec/05); quotes are refused while true. */
+  isPublicationOverdue?(): Promise<boolean>;
 }
 
 export class FakeVault implements DepositOracle {

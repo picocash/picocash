@@ -74,6 +74,12 @@ export function mintRoutes(ctx: MintContext): Hono {
     if (body.amount > ctx.config.maxMintAmount) {
       throw new ApiError(400, 'AMOUNT_LIMIT', `amount exceeds the per-quote limit of ${ctx.config.maxMintAmount}`, 'request a smaller amount, or split across multiple quotes');
     }
+    // Publication-policy mirror (spec/05): while the vault's solvency
+    // attestation is overdue, no new money is accepted — matching the
+    // vault's own gate on allowance deposits.
+    if (await ctx.oracle.isPublicationOverdue?.()) {
+      throw new ApiError(503, 'ATTESTATION_OVERDUE', 'this mint’s solvency attestation is overdue; new quotes are suspended', 'the operator must publish outstanding supply (see GET /v1/solvency and the vault’s publication policy); retry afterwards');
+    }
     // Reference-mint hard cap: global outstanding supply (showcase, not a bank).
     if (ctx.config.maxOutstanding > 0) {
       const outstanding = await computeOutstanding(ctx.db, ctx.keyset.id);

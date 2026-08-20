@@ -13,6 +13,7 @@ export type ErrorCode =
   | 'AMOUNT_LIMIT'
   | 'MELT_ALREADY_PAID'
   | 'PAYOUT_FAILED'
+  | 'ATTESTATION_OVERDUE'
   | 'NOT_IMPLEMENTED';
 
 /** Every API error carries a mandatory `recovery` hint for the calling agent. */

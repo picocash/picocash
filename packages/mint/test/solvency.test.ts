@@ -31,6 +31,17 @@ describe('solvency', () => {
     expect(solvency.body.keyset_id).toBe(mint.keyset.id);
   });
 
+  it('refuses new quotes while the vault attestation is overdue', async () => {
+    const mint = await makeMint();
+    (mint.fakeVault as any).isPublicationOverdue = async () => true;
+    const refused = await mint.post('/v1/mint/quote', { amount: 8, unit: mint.config.unit });
+    expect(refused.status).toBe(503);
+    expect(refused.body.error.code).toBe('ATTESTATION_OVERDUE');
+
+    (mint.fakeVault as any).isPublicationOverdue = async () => false;
+    expect((await mint.post('/v1/mint/quote', { amount: 8, unit: mint.config.unit })).status).toBe(200);
+  });
+
   it('enforces the global outstanding cap at quote time', async () => {
     const mint = await makeMint();
     mint.config.maxOutstanding = 150;
