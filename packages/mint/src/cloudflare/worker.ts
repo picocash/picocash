@@ -72,8 +72,13 @@ export class MintDO extends DurableObject<Env> {
       await this.verifyOnce();
     } catch (err) {
       this.verified = null; // retry on the next request
+      // Never echo provider errors verbatim: viem embeds the RPC URL (which may
+      // carry an API key) in its messages. Log server-side, answer generically.
+      console.error('[mint] binding verification failed:', err);
+      const raw = String(err instanceof Error ? err.message : err);
+      const reason = /too many|rate|limit/i.test(raw) ? 'RPC rate-limited' : /Invalid URL/i.test(raw) ? 'RPC misconfigured' : /refusing to start/i.test(raw) ? raw.replace(/https?:\/\/\S+/g, '<rpc>') : 'upstream RPC error';
       return Response.json(
-        { error: { code: 'BINDING_UNVERIFIED', message: String(err instanceof Error ? err.message : err), recovery: 'the mint refuses to serve until its unit/token/vault binding verifies; retry shortly or contact the operator' } },
+        { error: { code: 'BINDING_UNVERIFIED', message: `mint cannot verify its unit/token/vault binding (${reason})`, recovery: 'the mint refuses to serve until the binding verifies; retry shortly or contact the operator' } },
         { status: 503 },
       );
     }
