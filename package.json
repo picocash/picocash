@@ -9,7 +9,7 @@
   ],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build -w @picocash/crypto && npm run build -w @picocash/mint && npm run build -w @picocash/sdk && npm run build -w @picocash/mppx-method"
   },
   "engines": {
     "node": ">=20"
