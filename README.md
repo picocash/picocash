@@ -2,11 +2,11 @@
 
 > **Status: pre-alpha. The protocol spec is under RFC — design feedback welcome. Do not use with real funds.**
 
-**Private, instant, feeless bearer tokens for machine payments** — Chaumian ecash backed 1:1 by USDC.e on [Tempo](https://tempo.xyz), designed as a custom payment method for [MPP](https://mpp.dev).
+**Private, instant, feeless bearer tokens for machine payments** — Chaumian ecash backed 1:1 by TIP-20 stablecoins (e.g. USDC.e) on [Tempo](https://tempo.xyz), designed as a custom payment method for [MPP](https://mpp.dev).
 
 ## The demo this project is built around
 
-An agent deposits **$1 USDC.e once**, receives bearer tokens, then makes **20 paid API calls** with:
+An agent deposits **$1 of stablecoin once**, receives bearer tokens, then makes **20 paid API calls** with:
 
 - **sub-100ms payment acceptance** — the service verifies tokens *offline* (DLEQ proofs), then settles with the mint asynchronously. Accept-then-settle, no round-trip on the hot path. **Measured: ~45ms mean over 20 calls** in the [reference implementation's](packages/mppx-method/) end-to-end test.
 - **no on-chain transaction per call** — one deposit funds many payments; the mint nets out settlement on Tempo periodically.
@@ -16,7 +16,7 @@ On-chain settlement rails are transparent by design; an agent's transaction grap
 
 ## How it works (one paragraph)
 
-A **mint** holds USDC.e in an on-chain **vault contract**, 1:1 against outstanding tokens, with per-epoch on-chain publication of outstanding supply so anyone can verify solvency. Clients deposit into the vault, then obtain **blind signatures** over secrets they choose (the mint signs without seeing them — BDHKE on secp256k1, Cashu NUT-00 compatible). The resulting `(secret, signature)` pairs are bearer tokens. Every signature carries a **DLEQ proof**, so any third party can verify a token came from a given mint's keyset *without contacting the mint* — that's what enables offline acceptance and agent-to-agent transfer. Spending a token online marks its secret spent at the mint (the double-spend ledger); holders exit by **melting** tokens back to USDC.e from the vault.
+A **mint** holds a TIP-20 stablecoin (e.g. USDC.e) in an on-chain **vault contract**, 1:1 against outstanding tokens, with per-epoch on-chain publication of outstanding supply so anyone can verify solvency. Clients deposit into the vault, then obtain **blind signatures** over secrets they choose (the mint signs without seeing them — BDHKE on secp256k1, Cashu NUT-00 compatible). The resulting `(secret, signature)` pairs are bearer tokens. Every signature carries a **DLEQ proof**, so any third party can verify a token came from a given mint's keyset *without contacting the mint* — that's what enables offline acceptance and agent-to-agent transfer. Spending a token online marks its secret spent at the mint (the double-spend ledger); holders exit by **melting** tokens back to the stablecoin from the vault.
 
 ## The MPP payment method
 
@@ -41,7 +41,7 @@ The core deliverable is [`PIP-05`](https://github.com/picocash/pips/blob/main/PI
 
 ## Relationship to Cashu
 
-The blind-signature cryptography follows the [Cashu NUTs](https://github.com/cashubtc/nuts) (NUT-00 BDHKE, NUT-12 DLEQ) so the audit surface is shared. picocash diverges above the crypto layer: EVM/USDC.e-denominated with an on-chain vault on Tempo (not Lightning), on-chain proof-of-liabilities, and an MPP payment-method binding instead of Lightning invoices.
+The blind-signature cryptography follows the [Cashu NUTs](https://github.com/cashubtc/nuts) (NUT-00 BDHKE, NUT-12 DLEQ) so the audit surface is shared. picocash diverges above the crypto layer: EVM/stablecoin-denominated with an on-chain vault on Tempo (not Lightning), on-chain proof-of-liabilities, and an MPP payment-method binding instead of Lightning invoices.
 
 ## Contributing
 

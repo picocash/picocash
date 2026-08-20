@@ -4,7 +4,7 @@
 
 ---
 
-**TL;DR:** We're building an MPP payment method where agents pay with Chaumian eCash backed 1:1 by USDC.e on Tempo. A service verifies payment **offline in under 50ms measured** (no round-trip on the hot path), gets no payer identity, and the payer produces no on-chain transaction per call. Deposits and settlement still land on Tempo — this is volume-additive to the chain, a privacy and latency layer on top of it. The method spec is a draft and we'd like your eyes on it before anything hardens.
+**TL;DR:** We're building an MPP payment method where agents pay with Chaumian eCash backed 1:1 by a TIP-20 stablecoin (e.g. USDC.e) on Tempo. A service verifies payment **offline in under 50ms measured** (no round-trip on the hot path), gets no payer identity, and the payer produces no on-chain transaction per call. Deposits and settlement still land on Tempo — this is volume-additive to the chain, a privacy and latency layer on top of it. The method spec is a draft and we'd like your eyes on it before anything hardens.
 
 ## Why
 

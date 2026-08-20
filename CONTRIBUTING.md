@@ -11,7 +11,7 @@ Thanks for looking. picocash is pre-alpha and the **spec is under RFC** — righ
 ## Ground rules
 
 - **Spec before code.** Changes to protocol behavior version-bump `spec/` first; implementation follows the spec, never the reverse.
-- **Integers everywhere.** All amounts are base units (USDC.e 6-decimals) as integers end to end. PRs introducing floats to money paths will be declined.
+- **Integers everywhere.** All amounts are base units (TIP-20 stablecoins use 6 decimals) as integers end to end. PRs introducing floats to money paths will be declined.
 - **No new dependencies without cause.** Crypto stays on `@noble/curves` / `@noble/hashes` (audited, zero-dep).
 - **Errors teach recovery.** Every API error message tells the calling agent how to recover.
 
