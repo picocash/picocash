@@ -15,6 +15,8 @@ Real Postgres semantics either way:
 
 ## Run it
 
+**Public testnet instance:** `https://mint.picocash.dev` (Cloudflare Worker, Tempo Moderato, pathUSD, small caps; `GET /v1/info` to start). Testnet only — no real funds.
+
 **Against Tempo testnet (Moderato)** — real on-chain deposits, real oracle:
 
 ```sh

@@ -1,4 +1,6 @@
 name = "picocash-mint"
+routes = [{ pattern = "mint.picocash.dev", custom_domain = true }]
+workers_dev = true
 main = "src/cloudflare/worker.ts"
 compatibility_date = "2026-08-01"
 compatibility_flags = ["nodejs_compat"]
