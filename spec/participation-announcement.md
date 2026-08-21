@@ -4,12 +4,13 @@
 
 ---
 
-**TL;DR:** The whole loop works on Tempo Moderato testnet, and you can click through it yourself: deposit $1 of pathUSD, mint private bearer tokens in your browser, hand them to another wallet with **offline verification**, pay an MPP service with **~45ms measured merchant-side verification**, and melt back to on-chain funds from a vault whose solvency is published on-chain. Everything is Apache-2.0. We'd like implementers, reviewers, and first services.
+**TL;DR:** The whole loop works on Tempo Moderato testnet, and you can click through it yourself at **https://picocash.dev/demo/** (public mint: `mint.picocash.dev`): deposit $1 of pathUSD, mint private bearer tokens in your browser, hand them to another wallet with **offline verification**, pay an MPP service with **~45ms measured merchant-side verification**, and melt back to on-chain funds from a vault whose solvency is published on-chain. Everything is Apache-2.0. We'd like implementers, reviewers, and first services.
 
 ## What you can do today
 
 - **Click the demo**: a static HTML wallet (mint / transfer / melt) against a testnet mint — [apps/wallet-demo](https://github.com/picocash/picocash/tree/main/apps/wallet-demo). Faucet money, real chain, real vault.
 - **Verify solvency yourself**: `GET /v1/solvency` on any mint gives outstanding token supply; compare it to the vault's on-chain balance. The invariant is published per epoch via `publishOutstandingSupply` — operator-attested liabilities you can check against the vault balance — not cryptographic proof, but on-chain, timestamped, and policy-enforced.
+- **Lock tokens to a key** (PIP-08): fund an agent that can spend only with a named merchant, with an automatic refund if unused — `wallet.sendLocked(...)`; the merchant claims with `receive(token, { unlockKey })`.
 - **Pay a service with mppx**: the `picocash` method plugs into mppx's `validate`/`broadcast` interface — [`@picocash/mppx-method`](https://github.com/picocash/picocash/tree/main/packages/mppx-method). Measured: one $1 deposit → 20 calls, mean 45ms merchant-side offline verification (settlement at the mint is then the default before success).
 - **Build a wallet or a second mint**: [`@picocash/sdk`](https://github.com/picocash/picocash/tree/main/packages/sdk) is a stateless wallet-lite; [pips/vectors](https://github.com/picocash/pips/tree/main/vectors) are versioned test vectors any implementation must reproduce.
 
