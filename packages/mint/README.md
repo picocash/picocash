@@ -17,7 +17,7 @@ Real Postgres semantics either way:
 
 Operator scripts: `scripts/publish-solvency.ts` (attest outstanding supply on-chain, cron-safe), `scripts/register-keyset.ts` (publish the keyset public keys to the vault so holders can exit without you — PIP-04). Holder script: `scripts/emergency-redeem.ts` (redeem a `picoA` token at a vault in emergency mode, no mint involved).
 
-**Public testnet instance:** `https://mint.picocash.dev` (Cloudflare Worker, Tempo Moderato, pathUSD, small caps; `GET /v1/info` to start). Testnet only — no real funds.
+**Public testnet instance:** `https://mint.picocash.dev` — open it in a browser for the **status page** (custody at a glance, reconciliation checks between the mint's books and the vault on-chain, recent deposits and payouts with explorer links); machines use `GET /v1/info` and `GET /v1/status`. Testnet only — no real funds.
 
 **Against Tempo testnet (Moderato)** — real on-chain deposits, real oracle:
 

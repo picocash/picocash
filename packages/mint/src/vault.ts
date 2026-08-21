@@ -13,6 +13,25 @@ export interface DepositOracle {
   getDeposit(quoteId: string): Promise<Deposit | null>;
   /** Vault publication-policy breach (PIP-04); quotes are refused while true. */
   isPublicationOverdue?(): Promise<boolean>;
+  /** On-chain custody snapshot for the status page; null when not on a real chain. */
+  chainStatus?(keysetId: string, probeAmount: number): Promise<ChainStatus | null>;
+}
+
+/** What the chain says about the vault right now (all amounts in base units as strings). */
+export interface ChainStatus {
+  block: number;
+  balance: string;
+  operator: string | null;
+  last_outstanding: string | null;
+  last_published_at: number | null;
+  last_published_block: number | null;
+  publish_threshold_bps: number | null;
+  publish_interval_blocks: number | null;
+  publication_overdue: boolean | null;
+  max_melt_fee: string | null;
+  rotation_timelock: number | null;
+  emergency: { mode: boolean; grace_blocks: number; redeemed: string; cap: string; verifier: string } | null;
+  keyset_registered: boolean | null;
 }
 
 export class FakeVault implements DepositOracle {

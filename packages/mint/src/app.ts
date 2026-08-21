@@ -7,6 +7,7 @@ import { publicKeysJson } from './keyset.js';
 import { meltRoutes } from './routes/melt.js';
 import { mintRoutes } from './routes/mint.js';
 import { relayRoutes } from './routes/relay.js';
+import { statusRoutes } from './routes/status.js';
 import { swapRoutes } from './routes/swap.js';
 import { computeOutstanding } from './solvency.js';
 import { amountSchema, checkstateRequestSchema, parseBody } from './validation.js';
@@ -91,6 +92,7 @@ export function buildApp(ctx: MintContext): Hono {
 
   app.route('/v1/melt', meltRoutes(ctx));
   app.route('/', relayRoutes(ctx));
+  app.route('/', statusRoutes(ctx));
 
   if (ctx.fakeVault) {
     const fakeVault = ctx.fakeVault;

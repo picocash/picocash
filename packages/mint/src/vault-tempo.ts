@@ -1,6 +1,6 @@
 import { createPublicClient, defineChain, http, parseAbi, parseAbiItem } from 'viem';
 import type { TempoConfig } from './config.js';
-import type { Deposit, DepositOracle } from './vault.js';
+import type { ChainStatus, Deposit, DepositOracle } from './vault.js';
 
 // NB: memo is INDEXED on Tempo's TIP-20 (verified against a Moderato receipt:
 // memo sits in topic3, amount in data). Declaring it non-indexed makes viem
@@ -30,10 +30,23 @@ export interface ChainReader {
     fromBlock: bigint;
     toBlock: bigint;
   }): Promise<TransferLog[]>;
-  readContract?(args: { address: `0x${string}`; abi: unknown; functionName: string }): Promise<unknown>;
+  readContract?(args: { address: `0x${string}`; abi: unknown; functionName: string; args?: unknown[] }): Promise<unknown>;
 }
 
 const overdueAbi = parseAbi(['function isPublicationOverdue() view returns (bool)']);
+const statusAbi = parseAbi([
+  'function balanceOf(address) view returns (uint256)',
+  'function operator() view returns (address)',
+  'function lastOutstanding() view returns (uint256)',
+  'function lastPublishedAt() view returns (uint256)',
+  'function lastPublishedBlock() view returns (uint256)',
+  'function publishThresholdBps() view returns (uint16)',
+  'function publishIntervalBlocks() view returns (uint64)',
+  'function maxMeltFee() view returns (uint256)',
+  'function rotationTimelock() view returns (uint256)',
+  'function emergencyInfo() view returns (bool mode, uint64 graceBlocks, uint256 redeemed, uint256 cap, address verifier)',
+  'function keysetKey(bytes8 keysetId, uint256 amount) view returns (bytes)',
+]);
 
 export interface TempoVaultOptions {
   rpcUrl: string;
@@ -201,6 +214,57 @@ export class TempoVault implements DepositOracle {
       functionName: 'isPublicationOverdue',
     })) as boolean;
     this.overdueCache = { value, at: Date.now() };
+    return value;
+  }
+
+  private statusCache: { value: ChainStatus; at: number; key: string } | null = null;
+
+  /** Everything the status page shows about custody, read from the chain (cached 15 s). Tolerates v1 vaults. */
+  async chainStatus(keysetId: string, probeAmount: number): Promise<ChainStatus | null> {
+    const cacheKey = `${keysetId}:${probeAmount}`;
+    if (this.statusCache && this.statusCache.key === cacheKey && Date.now() - this.statusCache.at < 15_000) return this.statusCache.value;
+    if (!this.client.readContract) return null;
+    const read = async <T>(address: `0x${string}`, functionName: string, args?: unknown[]): Promise<T | null> => {
+      try {
+        return (await this.client.readContract!({ address, abi: statusAbi, functionName, ...(args ? { args } : {}) } as never)) as T;
+      } catch {
+        return null;
+      }
+    };
+    const v = this.depositAddress;
+    const [block, balance, operator, lastOutstanding, lastAt, lastBlock, thr, interval, maxFee, timelock, em, key, overdue] = await Promise.all([
+      withRetry(() => this.client.getBlockNumber()),
+      read<bigint>(this.tokenAddress, 'balanceOf', [v]),
+      read<string>(v, 'operator'),
+      read<bigint>(v, 'lastOutstanding'),
+      read<bigint>(v, 'lastPublishedAt'),
+      read<bigint>(v, 'lastPublishedBlock'),
+      read<number>(v, 'publishThresholdBps'),
+      read<bigint>(v, 'publishIntervalBlocks'),
+      read<bigint>(v, 'maxMeltFee'),
+      read<bigint>(v, 'rotationTimelock'),
+      read<[boolean, bigint, bigint, bigint, string]>(v, 'emergencyInfo'),
+      read<string>(v, 'keysetKey', [`0x${keysetId}`, BigInt(probeAmount)]),
+      this.isPublicationOverdue().catch(() => null),
+    ]);
+    const str = (x: bigint | null) => (x === null ? null : x.toString());
+    const num = (x: bigint | number | null) => (x === null ? null : Number(x));
+    const value: ChainStatus = {
+      block: Number(block),
+      balance: balance?.toString() ?? '0',
+      operator,
+      last_outstanding: str(lastOutstanding),
+      last_published_at: num(lastAt),
+      last_published_block: num(lastBlock),
+      publish_threshold_bps: num(thr),
+      publish_interval_blocks: num(interval),
+      publication_overdue: overdue,
+      max_melt_fee: str(maxFee),
+      rotation_timelock: num(timelock),
+      emergency: em ? { mode: em[0], grace_blocks: Number(em[1]), redeemed: em[2].toString(), cap: em[3].toString(), verifier: em[4] } : null,
+      keyset_registered: key === null ? null : key !== '0x',
+    };
+    this.statusCache = { value, at: Date.now(), key: cacheKey };
     return value;
   }
 
