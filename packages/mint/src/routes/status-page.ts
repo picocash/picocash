@@ -23,6 +23,9 @@ export function statusPage(o: { name: string }): string {
   .card .v { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin-top: 2px; }
   .card .v small { font-size: 13px; font-weight: 500; color: var(--dim); }
   .card .v a, .card .v .mono { font-size: 12px; word-break: break-all; white-space: normal; }
+  .card.pos .v { color: var(--g); } .card.neg .v { color: var(--r); }
+  .row3 { display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
+  @media (max-width: 720px) { .row3 { grid-template-columns: 1fr; } }
   .checks { display:grid; gap: 8px; }
   .check { display:flex; gap: 12px; align-items:flex-start; background: var(--panel); border:1px solid var(--line); border-radius: 10px; padding: 10px 14px; }
   .check .mark { flex: 0 0 26px; height: 26px; border-radius: 50%; display:inline-flex; align-items:center; justify-content:center; font-weight: 800; color:#fff; font-size: 14px; }
@@ -45,7 +48,8 @@ export function statusPage(o: { name: string }): string {
   <p id="err"></p>
 
   <h2>Custody at a glance</h2>
-  <div class="grid" id="glance"></div>
+  <div class="row3" id="glance1"></div>
+  <div class="row3" id="glance2"></div>
 
   <h2>Checks — what should hold, and whether it does</h2>
   <div class="checks" id="checks"></div>
@@ -84,15 +88,24 @@ export function statusPage(o: { name: string }): string {
     $('err').textContent = '';
     const base = explorer(d.vault?.chain_id);
     const c = d.chain;
-    $('sub').replaceChildren('unit ', el('code', {}, d.mint.unit), ' · keyset ', el('code', {}, d.mint.keyset.id), ' · ', d.mint.melt ? 'melt enabled' : 'melt disabled', ' · updated ', when(d.generated_at));
+    $('sub').replaceChildren('unit ', el('code', {}, d.mint.unit), ' · keyset ', el('code', {}, d.mint.keyset.id), ' · vault ', d.vault ? addrLink(base, d.vault.address) : el('code', {}, 'fake'), ' · ', d.mint.melt ? 'melt enabled' : 'melt disabled', ' · updated ', when(d.generated_at));
 
-    $('glance').replaceChildren(
+    const signedCard = (k, delta, note) => {
+      const cls = delta > 0 ? 'pos' : delta < 0 ? 'neg' : '';
+      const sign = delta > 0 ? '+' : delta < 0 ? '−' : '';
+      return el('div', { class: 'card ' + cls }, el('div', { class: 'k' }, k), el('div', { class: 'v' }, sign + '$' + usd(Math.abs(delta)), ' ', el('small', {}, (delta >= 0 ? '' : '-') + Math.abs(delta) + ' base' + (note ? ' · ' + note : ''))));
+    };
+    const bal = c ? Number(c.balance) : null;
+    $('glance1').replaceChildren(
       card('Vault balance (on-chain)', c ? money(c.balance) : '—'),
-      card('Outstanding tokens (mint books)', money(d.books.outstanding)),
-      card('Last attested outstanding (on-chain)', c && c.last_outstanding !== null ? money(c.last_outstanding) : 'never'),
-      card('Surplus (balance − outstanding)', c ? money(Number(c.balance) - d.books.outstanding) : '—'),
-      card('Deposits observed', el('span', {}, money(d.books.deposits), el('small', {}, ' · ' + d.books.deposit_count + ' quotes'))),
-      card('Paid out via melt', el('span', {}, money(d.books.payouts), el('small', {}, ' · ' + d.books.payout_count + ' melts · fees kept $' + usd(d.books.fees_retained)))),
+      card('Minted token balance (outstanding)', money(d.books.outstanding)),
+      bal === null ? card('Vault − minted', '—') : signedCard('Vault − minted', bal - d.books.outstanding, bal - d.books.outstanding >= 0 ? 'fully backed' : 'UNDER-BACKED'),
+    );
+    const net = d.books.deposits - d.books.payouts;
+    $('glance2').replaceChildren(
+      card('Total mint deposits', el('span', {}, money(d.books.deposits), el('small', {}, ' · ' + d.books.deposit_count + ' quotes'))),
+      card('Total mint withdrawals', el('span', {}, money(d.books.payouts), el('small', {}, ' · ' + d.books.payout_count + ' melts · fees kept $' + usd(d.books.fees_retained)))),
+      bal === null ? card('Deposits − withdrawals', money(net)) : signedCard('Deposits − withdrawals vs vault', bal - net, 'vault ' + usd(bal) + ' vs net ' + usd(net) + (bal - net === 0 ? ' · matches' : ' · MISMATCH')),
     );
 
     $('checks').replaceChildren(...d.checks.map((k) => el('div', { class: 'check ' + (k.ok === null ? 'na' : k.ok ? 'ok' : 'bad') },
@@ -104,6 +117,7 @@ export function statusPage(o: { name: string }): string {
       card('Backing token', d.vault ? addrLink(base, d.vault.token) : '—'),
       card('Operator', addrLink(base, c?.operator)),
       card('Publication policy', c ? el('span', {}, (c.publish_interval_blocks ? 'every ' + c.publish_interval_blocks + ' blocks' : '') + (c.publish_threshold_bps ? (c.publish_interval_blocks ? ' or ' : '') + (c.publish_threshold_bps / 100) + '% drift' : '')) : '—'),
+      card('Last attested outstanding', c && c.last_outstanding !== null ? money(c.last_outstanding) : 'never'),
       card('Last publication', c?.last_published_at ? el('span', {}, when(c.last_published_at), el('small', {}, ' · block ' + c.last_published_block + ' (now ' + c.block + ')')) : 'never'),
       card('Melt fee / ceiling', c ? el('span', {}, '$' + usd(d.mint.fees.melt), el('small', {}, ' / ' + (c.max_melt_fee !== null ? '$' + usd(c.max_melt_fee) : 'no ceiling (v1)'))) : '$' + usd(d.mint.fees.melt)),
       card('Rotation timelock', c?.rotation_timelock !== null && c?.rotation_timelock !== undefined ? (c.rotation_timelock / 86400).toFixed(1) + ' days' : '—'),
