@@ -192,3 +192,47 @@ describe('token parse limits and link policy (review P2-1/P2-2)', () => {
     expect(parseTokenLink(`http://mint.example/t/${id}#${key}`)).toBeNull();
   });
 });
+
+describe('PIP-08 P2PK locks', () => {
+  it('human locks to a merchant key and hands to an agent; only the merchant can claim, human can refund later', async () => {
+    const { randomScalarBytes, p2pkPublicKey } = await import('@picocash/crypto');
+    const { lockOf } = await import('../src/index.js');
+    const { mint, wallet: human, proofs } = await fundedWallet(64);
+    const merchantKey = randomScalarBytes(), humanKey = randomScalarBytes(), agentKey = randomScalarBytes();
+    const now = Math.floor(Date.now() / 1000);
+
+    const { token, change } = await human.sendLocked(proofs, 48, p2pkPublicKey(merchantKey), { locktime: now + 3600, refund: [p2pkPublicKey(humanKey)] });
+    expect(sumProofs(change)).toBe(16);
+    expect(token.startsWith('picoA')).toBe(true);
+
+    // the agent carrying the token cannot claim it for itself
+    const agent = new Wallet({ mintUrl: TEST_MINT_URL, fetchImpl: mint.fetchImpl });
+    await expect(agent.receive(token)).rejects.toThrow(/locked/);
+    await expect(agent.receive(token, { unlockKey: agentKey })).rejects.toThrow(/locked/);
+    // the lock is visible offline
+    expect(lockOf(parseToken(token).bundle.proofs[0]!)?.data).toBe(p2pkPublicKey(merchantKey));
+
+    // the merchant can
+    const merchant = new Wallet({ mintUrl: TEST_MINT_URL, fetchImpl: mint.fetchImpl });
+    const claimed = await merchant.receive(token, { unlockKey: merchantKey });
+    expect(sumProofs(claimed)).toBe(48);
+    expect(claimed.every((p) => lockOf(p) === null)).toBe(true); // fresh, unconditional proofs
+  });
+
+  it('refund key reclaims after locktime; witness survives serialization', async () => {
+    const { randomScalarBytes, p2pkPublicKey } = await import('@picocash/crypto');
+    const { signProofs } = await import('../src/index.js');
+    const { wallet, proofs } = await fundedWallet(4);
+    const merchantKey = randomScalarBytes(), humanKey = randomScalarBytes();
+    const past = Math.floor(Date.now() / 1000) - 10;
+    const { bundle } = await wallet.sendLocked(proofs, 4, p2pkPublicKey(merchantKey), { locktime: past, refund: [p2pkPublicKey(humanKey)] });
+
+    const signed = signProofs(bundle.proofs, humanKey);
+    expect(signed[0]!.witness).toMatch(/signatures/);
+    const reparsed = parseToken(serializeToken({ ...bundle, proofs: signed })).bundle;
+    expect(reparsed.proofs[0]!.witness).toBe(signed[0]!.witness);
+
+    const back = await wallet.receive(reparsed);
+    expect(sumProofs(back)).toBe(4);
+  });
+});

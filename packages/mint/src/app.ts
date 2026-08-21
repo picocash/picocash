@@ -43,6 +43,7 @@ export function buildApp(ctx: MintContext): Hono {
       keysets: [{ id: ctx.keyset.id, unit: ctx.keyset.unit, state: 'active' }],
       limits: { max_mint_amount: ctx.config.maxMintAmount },
       fees: { melt: ctx.config.meltFee },
+      spending_conditions: ['P2PK'], // PIP-08
       relay: ctx.config.relay.enabled ? { enabled: true, max_bytes: ctx.config.relay.maxBytes, ttl_seconds: ctx.config.relay.ttlSeconds } : { enabled: false },
       melt: Boolean(ctx.payout),
       vault:

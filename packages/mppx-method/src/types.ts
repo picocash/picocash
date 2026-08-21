@@ -11,6 +11,12 @@ export interface PicocashChallenge {
   unit: string;
   mints: Array<{ url: string; keyset_ids: string[] }>;
   expiry: number;
+  /**
+   * Optional (PIP-08 binding): the service's P2PK lock key. Proofs locked to
+   * this key are accepted in place of PC-BIND proofs — the way an agent spends
+   * tokens a human pre-locked to this merchant.
+   */
+  pubkey?: string;
 }
 
 /** Credential the agent answers with: proofs bound to the challenge. */

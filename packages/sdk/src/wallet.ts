@@ -2,6 +2,8 @@ import { decompose, finalizeSignatures, prepareOutputs, sumProofs, type OutputSp
 import { createTokenLink, parseTokenLink, resolveTokenLink } from './link.js';
 import { parseToken, serializeToken } from './token.js';
 import { verifyProofOffline } from './verify.js';
+import { p2pkSecretHex, verifyP2pkSpend } from '@picocash/crypto';
+import { signProofs } from './p2pk.js';
 import {
   MintApiError,
   type KeysetInfo,
@@ -165,7 +167,26 @@ export class Wallet {
     return createTokenLink(token, this.mintUrl, this.fetchImpl);
   }
 
-  async receive(input: TokenBundle | string): Promise<Proof[]> {
+  /**
+   * Send `amount` locked to `lockPubkey` (PIP-08 P2PK). Only the holder of that
+   * key can redeem; after `locktime` a `refund` key (e.g. your own) can reclaim.
+   */
+  async sendLocked(
+    proofs: Proof[],
+    amount: number,
+    lockPubkey: string,
+    options: { locktime?: number; refund?: string[]; memo?: string } = {},
+  ): Promise<{ bundle: TokenBundle; token: string; change: Proof[] }> {
+    const secrets = decompose(amount).map(() => p2pkSecretHex(lockPubkey, { ...(options.locktime !== undefined ? { locktime: options.locktime } : {}), ...(options.refund ? { refund: options.refund } : {}) }));
+    return this.send(proofs, amount, secrets, options.memo);
+  }
+
+  /**
+   * Claim a received bundle. `unlockKey` signs any P2PK-locked proofs (PIP-08);
+   * without it, locked proofs that are not yet spendable are refused up front
+   * with the lock key named, rather than failing at the mint.
+   */
+  async receive(input: TokenBundle | string, options: { unlockKey?: Uint8Array } = {}): Promise<Proof[]> {
     let bundle: TokenBundle;
     if (typeof input === 'string') {
       const token = parseTokenLink(input) ? await resolveTokenLink(input, this.fetchImpl) : input;
@@ -180,12 +201,18 @@ export class Wallet {
         throw new Error(`bundle proof ${i} failed offline DLEQ verification — refusing to accept`);
       }
     }
-    const specs: OutputSpec[] = decompose(sumProofs(bundle.proofs)).map((a) => ({ amount: a }));
-    return this.swap(bundle.proofs, specs);
+    const inputs = options.unlockKey ? signProofs(bundle.proofs, options.unlockKey) : bundle.proofs;
+    const now = Math.floor(Date.now() / 1000);
+    for (const [i, proof] of inputs.entries()) {
+      const verdict = verifyP2pkSpend(proof.secret, proof.witness, now);
+      if (!verdict.ok) throw new Error(`bundle proof ${i} is locked (${verdict.reason}); pass the matching unlockKey to receive()`);
+    }
+    const specs: OutputSpec[] = decompose(sumProofs(inputs)).map((a) => ({ amount: a }));
+    return this.swap(inputs, specs);
   }
 }
 
-function wireProof(proof: Proof): { amount: number; keyset_id: string; secret: string; C: string } {
-  // The mint neither needs nor wants the DLEQ payload; strip it on the wire.
-  return { amount: proof.amount, keyset_id: proof.keyset_id, secret: proof.secret, C: proof.C };
+function wireProof(proof: Proof): { amount: number; keyset_id: string; secret: string; C: string; witness?: string } {
+  // The mint neither needs nor wants the DLEQ payload; strip it on the wire. The witness it does need.
+  return { amount: proof.amount, keyset_id: proof.keyset_id, secret: proof.secret, C: proof.C, ...(proof.witness !== undefined ? { witness: proof.witness } : {}) };
 }

@@ -88,3 +88,49 @@ describe('swap', () => {
     expect(Number((signed.rows[0] as any).n)).toBe(2);
   });
 });
+
+describe('PIP-08 P2PK spending conditions', () => {
+  it('enforces the lock on swap and melt; refund key after locktime', async () => {
+    const { p2pkPublicKey, p2pkSecretHex, p2pkWitness, signP2pk, randomScalarBytes } = await import('@picocash/crypto');
+    const mint = await makeMint();
+    const plain = await mintTokens(mint, 8);
+    const agent = randomScalarBytes(), human = randomScalarBytes();
+    const now = Math.floor(Date.now() / 1000);
+
+    // lock 8 to the agent's key with a refund to the human in 1000s
+    const lockSecret = p2pkSecretHex(p2pkPublicKey(agent), { locktime: now + 1000, refund: [p2pkPublicKey(human)] });
+    const { outputs, pending } = makeOutputs(mint.keyset.id, [8], [lockSecret]);
+    const swapped = await mint.post('/v1/swap', { inputs: plain, outputs });
+    expect(swapped.status).toBe(200);
+    const locked = toProofs(mint, pending, swapped.body.signatures);
+
+    // nobody can spend it bare
+    const bare = await mint.post('/v1/swap', { inputs: locked, outputs: makeOutputs(mint.keyset.id, [8]).outputs });
+    expect(bare.status).toBe(403);
+    expect(bare.body.error.code).toBe('SPENDING_CONDITION_FAILED');
+
+    // a signature from the wrong key is no better
+    const wrong = locked.map((p) => ({ ...p, witness: p2pkWitness([signP2pk(p.secret, human)]) }));
+    expect((await mint.post('/v1/swap', { inputs: wrong, outputs: makeOutputs(mint.keyset.id, [8]).outputs })).status).toBe(403);
+
+    // the agent's signature unlocks it — for melt too
+    const signed = locked.map((p) => ({ ...p, witness: p2pkWitness([signP2pk(p.secret, agent)]) }));
+    const quote = await mint.post('/v1/melt/quote', { amount: 8, unit: mint.config.unit, to: '0x00000000000000000000000000000000000000A1' });
+    const melted = await mint.post('/v1/melt', { melt_id: quote.body.melt_id, inputs: signed });
+    expect(melted.status).toBe(200);
+    expect(melted.body.state).toBe('PAID');
+  });
+
+  it('a malformed P2PK secret can be minted (it is just bytes) but never spent', async () => {
+    const mint = await makeMint();
+    const plain = await mintTokens(mint, 2);
+    const badSecret = Buffer.from(JSON.stringify(['P2PK', { nonce: 'n', data: 'not-a-key' }])).toString('hex');
+    const { outputs, pending } = makeOutputs(mint.keyset.id, [2], [badSecret]);
+    const swapped = await mint.post('/v1/swap', { inputs: plain, outputs });
+    expect(swapped.status).toBe(200);
+    const stuck = toProofs(mint, pending, swapped.body.signatures);
+    const res = await mint.post('/v1/swap', { inputs: stuck, outputs: makeOutputs(mint.keyset.id, [2]).outputs });
+    expect(res.status).toBe(403);
+    expect(res.body.error.message).toContain('compressed pubkey');
+  });
+});

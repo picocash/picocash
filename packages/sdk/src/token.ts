@@ -12,7 +12,7 @@ const MEMO_MAX_BYTES = 256;
 interface PayloadA {
   m: string;
   u: string;
-  t: Array<{ i: string; p: Array<{ a: number; s: string; c: string; d: { e: string; s: string; r: string } }> }>;
+  t: Array<{ i: string; p: Array<{ a: number; s: string; c: string; d: { e: string; s: string; r: string }; w?: string }> }>;
   memo?: string;
 }
 
@@ -45,7 +45,7 @@ export function serializeToken(bundle: TokenBundle, memo?: string): string {
   for (const [i, proof] of bundle.proofs.entries()) {
     if (!proof.dleq) throw new TokenFormatError(`proof ${i} has no DLEQ payload; tokens must be offline-verifiable`);
     const list = groups.get(proof.keyset_id) ?? [];
-    list.push({ a: proof.amount, s: proof.secret, c: proof.C, d: { e: proof.dleq.e, s: proof.dleq.s, r: proof.dleq.r } });
+    list.push({ a: proof.amount, s: proof.secret, c: proof.C, d: { e: proof.dleq.e, s: proof.dleq.s, r: proof.dleq.r }, ...(proof.witness !== undefined ? { w: proof.witness } : {}) });
     groups.set(proof.keyset_id, list);
   }
   const payload: PayloadA = {
@@ -61,7 +61,7 @@ const HEX = /^[0-9a-f]+$/;
 
 /** Decode a `pico…` string into a bundle (+ memo). Throws TokenFormatError on anything malformed. */
 /** Hard parse limits (PIP-06 §Limits): bound memory and CPU on untrusted input. */
-export const TOKEN_LIMITS = { maxChars: 1024 * 1024, maxProofs: 1024, maxMemoChars: 512, maxMintUrlChars: 512 } as const;
+export const TOKEN_LIMITS = { maxChars: 1024 * 1024, maxProofs: 1024, maxMemoChars: 512, maxMintUrlChars: 512, maxWitnessChars: 4096 } as const;
 
 export function parseToken(input: string): { bundle: TokenBundle; memo?: string } {
   if (input.length > TOKEN_LIMITS.maxChars) throw new TokenFormatError(`token exceeds ${TOKEN_LIMITS.maxChars} characters`);
@@ -94,7 +94,8 @@ export function parseToken(input: string): { bundle: TokenBundle; memo?: string 
         typeof p.c === 'string' && HEX.test(p.c) && p.c.length === 66 &&
         p.d && [p.d.e, p.d.s, p.d.r].every((x) => typeof x === 'string' && HEX.test(x) && x.length === 64);
       if (!ok) throw new TokenFormatError('malformed proof in token');
-      proofs.push({ amount: p.a, keyset_id: group.i, secret: p.s, C: p.c, dleq: { e: p.d.e, s: p.d.s, r: p.d.r } });
+      if (p.w !== undefined && (typeof p.w !== 'string' || p.w.length > TOKEN_LIMITS.maxWitnessChars)) throw new TokenFormatError('malformed witness in token');
+      proofs.push({ amount: p.a, keyset_id: group.i, secret: p.s, C: p.c, dleq: { e: p.d.e, s: p.d.s, r: p.d.r }, ...(p.w !== undefined ? { witness: p.w } : {}) });
     }
   }
   const bundle: TokenBundle = { mint: payload.m, unit: payload.u, keyset_id: payload.t[0]!.i, proofs };

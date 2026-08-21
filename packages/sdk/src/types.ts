@@ -8,6 +8,8 @@ export interface Proof {
   secret: string;
   C: string;
   dleq?: { e: string; s: string; r: string };
+  /** PIP-08 spending-condition witness (JSON string), present once a locked proof is signed. */
+  witness?: string;
 }
 
 /** Serialized transfer format: everything a receiver needs to verify offline. */

@@ -1,4 +1,4 @@
-import { randomSecretHex, parsePcBindSecret, sumProofs, verifyProofOffline, yOfSecret, MintApiError, decompose, type Wallet } from '@picocash/sdk';
+import { randomSecretHex, parsePcBindSecret, parseP2pkSecret, p2pkPublicKey, signProofs, sumProofs, verifyProofOffline, yOfSecret, MintApiError, decompose, type Wallet } from '@picocash/sdk';
 import {
   CredentialRejected,
   type PicocashChallenge,
@@ -19,6 +19,12 @@ export interface AcceptorOptions {
    * MUST supply a shared, transactional store (review P0-3).
    */
   store?: AcceptorStore;
+  /**
+   * PIP-08: the service's P2PK private key. When set, challenges advertise its
+   * public key and proofs locked to it are accepted as bound (and signed at
+   * settlement).
+   */
+  lockKey?: Uint8Array;
 }
 
 export interface ChallengeState {
@@ -81,6 +87,8 @@ export class PicocashAcceptor {
   private readonly ttl: number;
   private readonly maxAmount: number;
   private readonly store: AcceptorStore;
+  private readonly lockKey: Uint8Array | undefined;
+  private readonly lockPubkey: string | undefined;
 
   constructor(options: AcceptorOptions) {
     if (options.mints.length === 0) throw new Error('acceptor needs at least one trusted mint');
@@ -89,6 +97,8 @@ export class PicocashAcceptor {
     this.ttl = options.challengeTtlSeconds ?? 300;
     this.maxAmount = options.maxAmount ?? 10_000_000;
     this.store = options.store ?? new MemoryAcceptorStore();
+    this.lockKey = options.lockKey;
+    this.lockPubkey = options.lockKey ? p2pkPublicKey(options.lockKey) : undefined;
   }
 
   createChallenge(amount: number): PicocashChallenge {
@@ -105,6 +115,7 @@ export class PicocashAcceptor {
       unit,
       mints: this.mints.map((m) => ({ url: m.url, keyset_ids: [m.keyset.id] })),
       expiry: nowSeconds() + this.ttl,
+      ...(this.lockPubkey ? { pubkey: this.lockPubkey } : {}),
     };
     void this.store.putChallenge({ challenge });
     return challenge;
@@ -155,12 +166,24 @@ export class PicocashAcceptor {
       throw new CredentialRejected('UNIT_MISMATCH', `keyset ${trusted.keyset.id} is ${trusted.keyset.unit}; challenge requires ${challenge.unit}`);
     }
 
-    // 3. every secret commits to this challenge's nonce and realm
+    // 3. every secret is bound to this service: PC-BIND to this challenge's
+    //    nonce/realm, or (PIP-08) P2PK-locked to the challenge's pubkey with
+    //    the lock still in force. An expired lock is an unconditional proof
+    //    and binds to nobody.
     for (const [i, proof] of credential.proofs.entries()) {
       const bind = parsePcBindSecret(proof.secret);
-      if (!bind || bind.nonce !== challenge.nonce || bind.realm !== challenge.realm) {
-        throw new CredentialRejected('BINDING_INVALID', `proof ${i} is not bound to this challenge (PC-BIND nonce/realm mismatch)`);
+      if (bind && bind.nonce === challenge.nonce && bind.realm === challenge.realm) continue;
+      let lock: ReturnType<typeof parseP2pkSecret> = null;
+      try {
+        lock = parseP2pkSecret(proof.secret);
+      } catch {
+        lock = null;
       }
+      const lockedToUs =
+        lock && challenge.pubkey && this.lockPubkey === challenge.pubkey && lock.data === challenge.pubkey &&
+        lock.nSigs === 1 && (lock.locktime === undefined || lock.locktime > nowSeconds() + 60);
+      if (lockedToUs) continue;
+      throw new CredentialRejected('BINDING_INVALID', `proof ${i} is not bound to this challenge (PC-BIND nonce/realm mismatch and not P2PK-locked to this service)`);
     }
 
     // 4. exact amount, valid denominations
@@ -215,8 +238,9 @@ export class PicocashAcceptor {
     if (!state?.receipt || !state.credential) throw new Error(`nothing to settle for ${challengeId}`);
     if (state.receipt.settlement !== 'pending') return state.receipt;
     try {
+      const inputs = this.lockKey ? signProofs(state.credential.proofs, this.lockKey) : state.credential.proofs;
       const fresh = await wallet.swap(
-        state.credential.proofs,
+        inputs,
         decompose(state.receipt.amount).map((amount) => ({ amount })),
       );
       state.receipt = { ...state.receipt, settlement: 'settled', checkstate_ref: fresh[0]?.keyset_id ?? null };

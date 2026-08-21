@@ -25,3 +25,21 @@ Key properties:
 - Mint errors surface as `MintApiError` with the mint's machine-readable `code` and `recovery` hint.
 
 Tests run against an in-process mint (no HTTP, no chain): `npm test`.
+
+## Locked tokens (PIP-08 P2PK)
+
+```ts
+import { p2pkPublicKey } from '@picocash/crypto';
+
+// human: fund an agent that can spend only with merchant M; reclaim after 24h if unused
+const { token, change } = await wallet.sendLocked(proofs, 500_000, merchantPubkey, {
+  locktime: Math.floor(Date.now() / 1000) + 86_400,
+  refund: [p2pkPublicKey(myKey)],
+});
+
+// merchant: claim (signs with its key and swaps to unconditional proofs)
+const mine = await merchantWallet.receive(token, { unlockKey: merchantKey });
+
+// anyone: inspect the lock offline
+lockOf(proof); // { data: '02…', locktime, refund: […], … } | null
+```

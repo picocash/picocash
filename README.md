@@ -26,7 +26,7 @@ The core deliverable is [`PIP-05`](https://github.com/picocash/pips/blob/main/PI
 
 | Path | What | Status |
 |---|---|---|
-| [pips](https://github.com/picocash/pips) | **The specifications (PIP-00…07) + test vectors** — separate repo, the RFC home | all under RFC |
+| [pips](https://github.com/picocash/pips) | **The specifications (PIP-00…08) + test vectors** — separate repo, the RFC home | all under RFC |
 | [`packages/crypto`](packages/crypto/) | BDHKE, hash-to-curve, DLEQ (secp256k1, `@noble/curves`) | **implemented, tested** |
 | [`packages/mint`](packages/mint/) | Mint server (TypeScript + Hono + Postgres) | **live on Tempo testnet** — mint/swap/melt/checkstate against the deployed vault |
 | [`packages/sdk`](packages/sdk/) | Agent wallet-lite client | **implemented** — mint/swap/melt/send/receive, offline verification |

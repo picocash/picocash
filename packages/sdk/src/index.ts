@@ -12,3 +12,5 @@ export { decompose, sumProofs, yOfSecret, prepareOutputs, finalizeSignatures, ty
 export { canonicalPcBind, parsePcBindSecret, pcBindSecretHex, randomSecretHex, type PcBind } from './secrets.js';
 export { serializeToken, parseToken, TokenFormatError, TOKEN_LIMITS } from './token.js';
 export { createTokenLink, resolveTokenLink, parseTokenLink, isAllowedRelayUrl, encryptToken, decryptToken } from './link.js';
+export { signProofs, lockOf } from './p2pk.js';
+export { p2pkSecretHex, p2pkPublicKey, parseP2pkSecret, verifyP2pkSpend, signP2pk, p2pkWitness } from '@picocash/crypto';

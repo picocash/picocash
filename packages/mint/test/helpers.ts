@@ -99,9 +99,9 @@ export function decompose(amount: number): number[] {
 }
 
 /** Fresh secrets + blinding per denomination; returns wire outputs and the pending client state. */
-export function makeOutputs(keysetId: string, amounts: number[]): { outputs: any[]; pending: PendingOutput[] } {
-  const pending = amounts.map((amount) => {
-    const secret = randomScalarBytes();
+export function makeOutputs(keysetId: string, amounts: number[], secretsHex?: string[]): { outputs: any[]; pending: PendingOutput[] } {
+  const pending = amounts.map((amount, i) => {
+    const secret = secretsHex?.[i] ? hexToBytes(secretsHex[i]!) : randomScalarBytes();
     const { B_, r } = blindMessage(secret);
     return { amount, secret, r, B_: bytesToHex(B_) };
   });

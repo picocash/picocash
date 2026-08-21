@@ -23,3 +23,7 @@ The double-spend exposure of accept-then-settle is bounded and tested: a payer w
 `@picocash/mppx-method/mppx` plugs the method into [mppx](https://mpp.dev) (peer dependency): `picocashMethod` is the `Method.from` wire definition, `picocash({ wallet, getProofs, onChange })` the client method (creates `Authorization: Payment …` credentials), and `picocashCharge({ acceptor })` the server method using mppx's modern split — `validate` maps to the acceptor's non-mutating offline pre-check, `broadcast` to the terminal offline accept (settlement stays async via `acceptor.settle()`). The challenge nonce rides in the method's `request` schema; inject a fresh one per challenge (`freshNonce()`) via the server's `request` hook. Tested through mppx's own `Credential.serialize` / `Method.validateCredential` / `Method.broadcastCredential` pipeline.
 
 `npm test` runs the paid-echo-service end-to-end and the mppx adapter round trip against an in-process mint.
+
+## Pre-locked tokens (PIP-08)
+
+Give the acceptor a `lockKey` and its challenges advertise `pubkey`. An agent holding tokens a human locked to that key pays with them directly (`payChallenge` picks an exact-amount subset — it cannot swap what it cannot sign), the acceptor accepts them as bound to the service, and signs them at `settle()`. Locked proofs presented to any other service are rejected (`BINDING_INVALID`).

@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { pcBindSecretHex, Wallet, type Proof } from '@picocash/sdk';
+import { parseToken, pcBindSecretHex, Wallet, type Proof } from '@picocash/sdk';
 import { CredentialRejected, payChallenge, PicocashAcceptor } from '../src/index.js';
 import { fundedWallet, makeTestMint, TEST_MINT_URL } from './helper.js';
 
@@ -178,5 +178,49 @@ describe('acceptor unit check (review P1-5)', () => {
     const challenge = { ...acceptor.createChallenge(64), challenge_id: 'chal_external', unit: keyset.unit };
     const { credential } = await payChallenge(wallet, proofs, challenge);
     await expect(acceptor.verifyCredential(credential, challenge)).rejects.toThrowError(expect.objectContaining({ reason: 'UNIT_MISMATCH' }));
+  });
+});
+
+describe('PIP-08 P2PK binding in the MPP method', () => {
+  it('human locks tokens to the merchant; the agent pays with them; the merchant settles by signing', async () => {
+    const { randomScalarBytes, p2pkPublicKey } = await import('@picocash/crypto');
+    const { wallet: human, proofs, keyset, serviceWallet, mint } = await makeScene(1024);
+    const merchantKey = randomScalarBytes();
+    const acceptor = new PicocashAcceptor({ realm: 'shop.test', mints: [{ url: TEST_MINT_URL, keyset }], lockKey: merchantKey });
+
+    // human: lock $ to the merchant in small denominations, hand the token to the agent
+    const { token } = await human.sendLocked(proofs, 64 + 32 + 16, p2pkPublicKey(merchantKey), { locktime: Math.floor(Date.now() / 1000) + 3600, refund: [p2pkPublicKey(randomScalarBytes())] });
+    const agentProofs = parseToken(token).bundle.proofs;
+    const agent = new Wallet({ mintUrl: TEST_MINT_URL, fetchImpl: mint.fetchImpl });
+
+    // agent: pays a 48 challenge without being able to swap anything
+    const challenge = acceptor.createChallenge(48);
+    expect(challenge.pubkey).toBe(p2pkPublicKey(merchantKey));
+    const { credential, change } = await payChallenge(agent, agentProofs, challenge);
+    expect(credential.proofs.map((p) => p.amount).sort((a, b) => a - b)).toEqual([16, 32]);
+    expect(change.map((p) => p.amount)).toEqual([64]);
+
+    const receipt = await acceptor.verifyCredential(credential);
+    expect(receipt.settlement).toBe('pending');
+    // the same locked proofs are worthless to a different merchant
+    const other = new PicocashAcceptor({ realm: 'other.test', mints: [{ url: TEST_MINT_URL, keyset }], lockKey: randomScalarBytes() });
+    const otherChallenge = other.createChallenge(48);
+    await expect(other.verifyCredential({ ...credential, challenge_id: otherChallenge.challenge_id })).rejects.toThrowError(expect.objectContaining({ reason: 'BINDING_INVALID' }));
+
+    // merchant settles: signs with its lock key and swaps
+    const settled = await acceptor.settle(challenge.challenge_id, serviceWallet);
+    expect(settled.settlement).toBe('settled');
+  });
+
+  it('refuses locked proofs whose lock is about to expire (they would bind to nobody)', async () => {
+    const { randomScalarBytes, p2pkPublicKey } = await import('@picocash/crypto');
+    const { wallet: human, proofs, keyset, mint } = await makeScene(8);
+    const merchantKey = randomScalarBytes();
+    const acceptor = new PicocashAcceptor({ realm: 'shop.test', mints: [{ url: TEST_MINT_URL, keyset }], lockKey: merchantKey });
+    const { token } = await human.sendLocked(proofs, 8, p2pkPublicKey(merchantKey), { locktime: Math.floor(Date.now() / 1000) + 30 });
+    const agent = new Wallet({ mintUrl: TEST_MINT_URL, fetchImpl: mint.fetchImpl });
+    const challenge = acceptor.createChallenge(8);
+    const { credential } = await payChallenge(agent, parseToken(token).bundle.proofs, challenge);
+    await expect(acceptor.verifyCredential(credential)).rejects.toThrowError(expect.objectContaining({ reason: 'BINDING_INVALID' }));
   });
 });

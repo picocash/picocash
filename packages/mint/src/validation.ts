@@ -9,10 +9,10 @@ export const amountSchema = z.number().int().positive().max(MAX_DENOMINATION);
 /** 33-byte SEC1 compressed point, lowercase hex. */
 export const pointSchema = z.string().regex(/^0[23][0-9a-f]{64}$/, 'expected 33-byte compressed point hex');
 
-/** Secret: raw bytes hex-encoded, 1..256 bytes. */
+/** Secret: raw bytes hex-encoded, 1..1024 bytes (room for PIP-05 PC-BIND / PIP-08 P2PK JSON). */
 export const secretSchema = z
   .string()
-  .regex(/^(?:[0-9a-f]{2}){1,256}$/, 'expected lowercase hex of 1..256 bytes');
+  .regex(/^(?:[0-9a-f]{2}){1,1024}$/, 'expected lowercase hex of 1..1024 bytes');
 
 export const blindedMessageSchema = z.object({
   amount: amountSchema,
@@ -26,6 +26,8 @@ export const proofSchema = z.object({
   keyset_id: z.string().regex(/^[0-9a-f]{16}$/),
   secret: secretSchema,
   C: pointSchema,
+  /** PIP-08 spending-condition witness, e.g. {"signatures":[…]} for P2PK. */
+  witness: z.string().max(4096).optional(),
 });
 export type ProofInput = z.infer<typeof proofSchema>;
 

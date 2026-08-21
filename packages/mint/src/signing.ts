@@ -1,4 +1,4 @@
-import { bytesToHex, createDleqProof, hashToCurve, hexToBytes, signBlindedMessage, verifyProof } from '@picocash/crypto';
+import { bytesToHex, createDleqProof, hashToCurve, hexToBytes, signBlindedMessage, verifyP2pkSpend, verifyProof } from '@picocash/crypto';
 import type { Queryable } from './db.js';
 import { ApiError } from './errors.js';
 import type { Keyset } from './keyset.js';
@@ -8,8 +8,11 @@ export interface VerifiedInput extends ProofInput {
   y: string;
 }
 
-/** Crypto-verify spend inputs against the keyset and compute their ledger key Y. */
-export function verifyInputs(keyset: Keyset, inputs: ProofInput[]): VerifiedInput[] {
+/**
+ * Crypto-verify spend inputs against the keyset, enforce PIP-08 spending
+ * conditions (P2PK) at time `now`, and compute their ledger key Y.
+ */
+export function verifyInputs(keyset: Keyset, inputs: ProofInput[], now: number = Math.floor(Date.now() / 1000)): VerifiedInput[] {
   const seen = new Set<string>();
   return inputs.map((input, index) => {
     // Single active keyset for now; swap-only keysets join with rotation (PIP-01).
@@ -23,6 +26,10 @@ export function verifyInputs(keyset: Keyset, inputs: ProofInput[]): VerifiedInpu
     const secret = hexToBytes(input.secret);
     if (!verifyProof(secret, hexToBytes(input.C), key.privkey)) {
       throw new ApiError(400, 'INVALID_PROOF', `input ${index}: signature does not verify`, 'the proof is not a valid token from this mint/keyset; check secret encoding (raw bytes, hex) and C');
+    }
+    const verdict = verifyP2pkSpend(input.secret, input.witness, now);
+    if (!verdict.ok) {
+      throw new ApiError(403, 'SPENDING_CONDITION_FAILED', `input ${index}: ${verdict.reason}`, 'sign sha256(secret) with the lock key (or a refund key after locktime) and resend with proof.witness = {"signatures":[…]} (PIP-08)');
     }
     const y = bytesToHex(hashToCurve(secret).toRawBytes(true));
     if (seen.has(y)) {
