@@ -68,6 +68,13 @@ export class MintDO extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     await this.ready;
+    // A Durable Object instance can outlive a deploy. If the bound vault
+    // changed underneath us, abort this instance so the next request rebuilds
+    // from the current env instead of serving a retired vault.
+    const boundVault = this.env.PICOCASH_DEPOSIT_ADDRESS as string | undefined;
+    if (boundVault && this.config.tempo && boundVault.toLowerCase() !== this.config.tempo.depositAddress.toLowerCase()) {
+      this.ctx.abort('vault binding changed; restarting');
+    }
     try {
       await this.verifyOnce();
     } catch (err) {

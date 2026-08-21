@@ -46,6 +46,8 @@ const statusAbi = parseAbi([
   'function rotationTimelock() view returns (uint256)',
   'function emergencyInfo() view returns (bool mode, uint64 graceBlocks, uint256 redeemed, uint256 cap, address verifier)',
   'function keysetKey(bytes8 keysetId, uint256 amount) view returns (bytes)',
+  'function breakerInfo() view returns (uint16 limitBps, uint64 epochBlocks, uint256 epochStart, uint256 baseline, uint256 allowance, uint256 melted, uint256 trippedAt)',
+  'function emergencyMode() view returns (bool)',
 ]);
 
 export interface TempoVaultOptions {
@@ -208,11 +210,20 @@ export class TempoVault implements DepositOracle {
   async isPublicationOverdue(): Promise<boolean> {
     if (this.overdueCache && Date.now() - this.overdueCache.at < 30_000) return this.overdueCache.value;
     if (!this.client.readContract) return false; // test stubs without contract reads
-    const value = (await this.client.readContract({
+    const overdue = (await this.client.readContract({
       address: this.depositAddress,
       abi: overdueAbi,
       functionName: 'isPublicationOverdue',
     })) as boolean;
+    // A vault in emergency mode (breaker tripped, or silent past grace) must not take new deposits either —
+    // mirror it on the quote path, which the contract cannot intercept for memo transfers. v1 vaults lack the view.
+    let emergency = false;
+    try {
+      emergency = (await this.client.readContract({ address: this.depositAddress, abi: statusAbi, functionName: 'emergencyMode' } as never)) as boolean;
+    } catch {
+      emergency = false;
+    }
+    const value = overdue || emergency;
     this.overdueCache = { value, at: Date.now() };
     return value;
   }
@@ -232,7 +243,7 @@ export class TempoVault implements DepositOracle {
       }
     };
     const v = this.depositAddress;
-    const [block, balance, operator, lastOutstanding, lastAt, lastBlock, thr, interval, maxFee, timelock, em, key, overdue] = await Promise.all([
+    const [block, balance, operator, lastOutstanding, lastAt, lastBlock, thr, interval, maxFee, timelock, em, key, overdue, br] = await Promise.all([
       withRetry(() => this.client.getBlockNumber()),
       read<bigint>(this.tokenAddress, 'balanceOf', [v]),
       read<string>(v, 'operator'),
@@ -246,6 +257,7 @@ export class TempoVault implements DepositOracle {
       read<[boolean, bigint, bigint, bigint, string]>(v, 'emergencyInfo'),
       read<string>(v, 'keysetKey', [`0x${keysetId}`, BigInt(probeAmount)]),
       this.isPublicationOverdue().catch(() => null),
+      read<[number, bigint, bigint, bigint, bigint, bigint, bigint]>(v, 'breakerInfo'),
     ]);
     const str = (x: bigint | null) => (x === null ? null : x.toString());
     const num = (x: bigint | number | null) => (x === null ? null : Number(x));
@@ -263,6 +275,7 @@ export class TempoVault implements DepositOracle {
       rotation_timelock: num(timelock),
       emergency: em ? { mode: em[0], grace_blocks: Number(em[1]), redeemed: em[2].toString(), cap: em[3].toString(), verifier: em[4] } : null,
       keyset_registered: key === null ? null : key !== '0x',
+      breaker: br ? { limit_bps: Number(br[0]), epoch_blocks: Number(br[1]), epoch_start: Number(br[2]), baseline: br[3].toString(), allowance: br[4].toString(), melted: br[5].toString(), tripped_at: Number(br[6]) } : null,
     };
     this.statusCache = { value, at: Date.now(), key: cacheKey };
     return value;

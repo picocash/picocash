@@ -78,6 +78,13 @@ export function statusRoutes(ctx: MintContext): Hono {
       ok: chain?.emergency ? chain.emergency.grace_blocks > 0 && chain.keyset_registered === true : chain ? false : null,
       detail: chain?.emergency ? `grace ${chain.emergency.grace_blocks} blocks, keyset ${chain.keyset_registered ? 'registered' : 'NOT registered'}, mode ${chain.emergency.mode ? 'EMERGENCY' : 'normal'}, redeemed ${chain.emergency.redeemed} / cap ${chain.emergency.cap}` : 'vault has no emergency redemption (v1)',
     });
+    const br = chain?.breaker ?? null;
+    const util = br && Number(br.allowance) > 0 ? Number(br.melted) / Number(br.allowance) : 0;
+    checks.push({
+      id: 'breaker', label: 'Withdrawal breaker armed and not tripped',
+      ok: br === null ? (chain ? false : null) : br.limit_bps > 0 && br.tripped_at === 0,
+      detail: br === null ? 'vault has no withdrawal breaker (pre-v3)' : br.limit_bps === 0 ? 'breaker disabled at deployment' : br.tripped_at ? `TRIPPED at block ${br.tripped_at} — operator payouts halted, holder exit open` : `${(br.limit_bps / 100).toFixed(0)}% of backing per ${br.epoch_blocks} blocks; this epoch ${br.melted} of ${br.allowance} used (${(util * 100).toFixed(1)}%)`,
+    });
     checks.push({ id: 'owed', label: 'No unpaid melt debt', ok: owed === 0, detail: owed === 0 ? 'no OWED/PENDING melts' : `${owed} base units owed across unpaid melts` });
 
     return c.json({

@@ -32,6 +32,7 @@ export interface ChainStatus {
   rotation_timelock: number | null;
   emergency: { mode: boolean; grace_blocks: number; redeemed: string; cap: string; verifier: string } | null;
   keyset_registered: boolean | null;
+  breaker: { limit_bps: number; epoch_blocks: number; epoch_start: number; baseline: string; allowance: string; melted: string; tripped_at: number } | null;
 }
 
 export class FakeVault implements DepositOracle {

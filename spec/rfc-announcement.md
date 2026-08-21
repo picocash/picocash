@@ -6,7 +6,7 @@
 
 **Proposed issue title:** `RFC: picocash — an eCash payment method (offline-verified, lockable bearer tokens)`
 
-**TL;DR.** We've built and would like feedback on a new payment method: agents pay with Chaumian eCash — blind-signature bearer tokens backed 1:1 by a TIP-20 stablecoin held in an on-chain vault on Tempo. A service verifies payment **offline** (merchant-side verification measured **~45 ms mean** in our reference implementation, no mint round-trip), learns no payer address, and the payer produces **no on-chain transaction per call**: one deposit funds many payments, with deposits and net settlement still landing on Tempo. Tokens can be **locked to a public key** (PIP-08), so a human can fund an agent that can spend only with a named merchant. Specs: **https://github.com/picocash/pips** · everything Apache-2.0 · live on Moderato with a public mint and a browser demo you can click through.
+**TL;DR.** We've built and would like feedback on a new payment method: agents pay with Chaumian eCash — blind-signature bearer tokens backed 1:1 by a TIP-20 stablecoin held in an on-chain vault on Tempo. A service verifies payment **offline** (merchant-side verification measured **~45 ms mean** in our reference implementation, no mint round-trip), learns no payer address, and the payer produces **no on-chain transaction per call**: one deposit funds many payments, with deposits and net settlement still landing on Tempo. Tokens can be **locked to a public key** (PIP-08), so a human can fund an agent that can spend only with a named merchant. Custody is a vault contract built around *slow, visible, bounded, escapable*: attested on-chain, operator payouts capped per epoch, and holders able to redeem at the vault with no mint involved. Specs: **https://github.com/picocash/pips** · everything Apache-2.0 · live on Moderato with a public mint and a browser demo you can click through.
 
 ## Why another method
 
@@ -37,9 +37,18 @@ A bare eCash proof is a bearer instrument, which is sometimes exactly wrong for 
 
 The wire format follows the established eCash convention for well-known secrets, so existing wallet code and auditors recognise it; the lock is readable offline by any receiver.
 
-## Custody, stated as a guarantee
+## Custody: slow, visible, bounded, escapable
 
-The vault side is where trust concentrates, so it's structured as an **exit guarantee, every clause on-chain and checkable before depositing**: payouts cannot be paused by the contract; each melt pays out exactly once (`meltPaid`); the exit fee is capped by the vault's committed `maxMeltFee`; raising that cap takes the same timelock as rotating the operator key (a per-deployment parameter, 2 days on our testnet vaults). Vaults also commit at deployment to a **solvency-publication policy** — outstanding supply is an operator attestation published on-chain under that policy, checkable against the vault balance by anyone, and a mint that misses its attestation interval stops being able to accept deposits until it publishes. What the contract cannot do is make an absent operator sign melts; abandonment is made *visible* early, not cured — that gap is listed openly in our known limitations. Factory-deployed (`isVault()` proves canonical bytecode), source-verified, live on Moderato.
+The vault is where trust concentrates, and we want to be precise about what a contract can and cannot do here. A mint is a custodian, and an eCash mint's *issuance* is unauditable by construction — blind signatures are the point — so no vault can make operator theft impossible. What ours does is make it **slow, visible, bounded, and escapable**, every clause on-chain and checkable before depositing:
+
+- **Slow.** Rotating the operator key, raising the fee ceiling, loosening the breaker, or un-latching it all take the vault's public timelock (a per-deployment parameter; 2 days on our testnet vaults).
+- **Visible.** Outstanding supply is attested on-chain under a deploy-time publication policy; miss the interval and the vault refuses new deposits until it is published. Each mint serves a status page (`https://mint.picocash.dev/`) that reconciles its own books against the chain every 30 s — backing vs. outstanding, Σ deposits − Σ payouts vs. vault balance, attestation freshness, fee ceiling, breaker utilisation — and shows a red ✗ with the delta on any drift. It caught a real misconfiguration on its first day.
+- **Bounded.** A **withdrawal breaker** caps operator payouts per epoch at a committed share of the backing. Over-limit melts revert; the melt that consumes the allowance *latches* the vault — no further operator payouts, no deposits — and bounds a rogue operator to one epoch's allowance.
+- **Escapable.** Holders can redeem tokens **at the vault directly, with no mint involved**: the vault verifies each token's DLEQ on-chain against the keyset's *public* key (registered by the operator), keeps its own spent set, honours P2PK locks (Schnorr witnesses verified on-chain), and caps total payouts at the last attested outstanding supply. This **emergency redemption** opens after a grace period if the operator goes silent past its attestation interval — and *immediately* when the breaker trips. "Payouts are never pausable" thus holds for holders even when the operator key is locked out. ≈2.1 M gas per proof; a six-proof exit cost about a cent and a half on Moderato.
+
+Plus the clauses from before: each melt pays out exactly once (`meltPaid`), the exit fee is capped by the vault's committed `maxMeltFee`, the factory proves canonical bytecode (`isVault()`), and `sweep` can never touch the backing token.
+
+What remains, stated plainly: an operator can drain *just under* the breaker's allowance each epoch without tripping it (bounded rate, fully visible); tokens spent at the mint before it died are indistinguishable on-chain in an emergency and compete for the capped pool; and an operator who lies in the attestation is the residual trust assumption — now bounded in rate and amount rather than open-ended. All of it is in the repo's SECURITY.md.
 
 ## Intersections with open issues here
 
@@ -52,14 +61,16 @@ The vault side is where trust concentrates, so it's structured as an **exit guar
 2. **Unit identity**: `tip20:<chain_id>:<address>` with keys/ids derived from it — is CAIP-19 alignment worth the ceremony? [PIP-01]
 3. **Receipts**: mint-cosigned or service-signed only? (See #292/#317 above.)
 4. **Fees**: flat melt fee under an on-chain ceiling vs. gas-indexed. [PIP-03]
-5. **Anything unsound.** Runtime model: spent-secret ledger is insert-before-sign in one transaction; DLEQ on every signature. Break it and we want to know before this touches real money.
+5. **Custody bounds**: breaker sizing (share of backing per epoch, epoch length) and whether a cumulative multi-epoch cap is worth the complexity; the emergency cap's fallback to balance for never-attested vaults; whether an orderly-shutdown spent-set commitment should be mandatory. [PIP-04]
+6. **Anything unsound.** Runtime model: spent-secret ledger is insert-before-sign in one transaction; DLEQ on every signature; on-chain secp256k1 verifier (Jacobian arithmetic, Shamir, BIP-340) written for auditability. Break any of it and we want to know before this touches real money.
 
 ## Try it / read it
 
 - Specs (with published test vectors): https://github.com/picocash/pips — open questions are threaded in [Discussions](https://github.com/picocash/pips/discussions)
+- **Mint status, live**: https://mint.picocash.dev/ — the reconciliation page described above, against the public testnet vault.
 - **Demo, no install**: https://picocash.dev/demo/ — creates a throwaway testnet wallet, funds it from the Moderato faucet, deposits $1 of pathUSD, mints tokens in the browser with DLEQ verified client-side, sends them as a token string or an encrypted short link, and melts back on-chain. Runs against the public mint at `https://mint.picocash.dev` (`GET /v1/info`, `/v1/solvency`).
 - Reference stack (crypto, mint, SDK, mppx method, browser wallet): https://github.com/picocash/picocash
-- Contracts (factory + vault, verified on Moderato): https://github.com/picocash/picocash-contracts
+- Contracts (factory, vault v3 with breaker + emergency redemption, on-chain proof verifier; Sourcify exact-match on Moderato): https://github.com/picocash/picocash-contracts
 - Site: https://picocash.dev
 
 **Proposed next step**, if there's appetite: we'll submit `draft-picocash-payment-method-00` from the method template into `specs/methods/`, and would structure it to slot alongside the existing charge-type drafts.

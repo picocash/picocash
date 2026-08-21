@@ -135,8 +135,19 @@ export function statusPage(o: { name: string }): string {
       n.append(el('div', { class: 'note' }, 'grace ' + em.grace_blocks + ' blocks · keyset ' + (c.keyset_registered ? 'registered' : 'NOT registered') + ' · redeemed $' + usd(em.redeemed) + ' / cap $' + usd(em.cap)));
       return n;
     })();
+    const br = c?.breaker;
+    const breakerCard = (() => {
+      if (!br) return card('Withdrawal breaker', 'not available (pre-v3 vault)');
+      if (br.limit_bps === 0) { const n = el('div', { class: 'card warn' }, el('div', { class: 'k' }, 'Withdrawal breaker'), el('div', { class: 'v caps' }, 'DISABLED')); return n; }
+      const util = Number(br.allowance) > 0 ? Number(br.melted) / Number(br.allowance) : 0;
+      const cls = br.tripped_at ? 'neg' : util >= 0.5 ? 'warn' : 'pos';
+      const n = el('div', { class: 'card ' + cls }, el('div', { class: 'k' }, 'Withdrawal breaker'), el('div', { class: 'v caps' }, br.tripped_at ? 'TRIPPED' : 'ARMED'));
+      n.append(el('div', { class: 'note' }, br.tripped_at ? 'latched at block ' + br.tripped_at + ' · operator payouts halted · exit open' : (br.limit_bps / 100).toFixed(0) + '% of backing per ' + br.epoch_blocks + ' blocks · this epoch $' + usd(br.melted) + ' of $' + usd(br.allowance) + ' (' + (util * 100).toFixed(1) + '%)'));
+      return n;
+    })();
     $('vault').replaceChildren(
       exitCard,
+      breakerCard,
       card('Backing token', d.vault ? addrLink(base, d.vault.token) : '—'),
       card('Operator', addrLink(base, c?.operator)),
       card('Publication policy', c ? el('span', {}, (c.publish_interval_blocks ? 'every ' + c.publish_interval_blocks + ' blocks' : '') + (c.publish_threshold_bps ? (c.publish_interval_blocks ? ' or ' : '') + (c.publish_threshold_bps / 100) + '% drift' : '')) : '—'),
