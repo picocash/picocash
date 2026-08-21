@@ -1,12 +1,12 @@
 # RFC: `picocash` — an eCash payment method for MPP
 
-> **Draft for internal review — not yet posted.** Venue: a new issue on [tempoxyz/mpp-specs](https://github.com/tempoxyz/mpp-specs/issues) (their CONTRIBUTING says: issue first for discussion, then a method draft from `examples/method-template.md` into `specs/methods/` as `draft-picocash-payment-method-00`). Everything below the rule is the issue text, ready to paste. Review notes at the bottom.
+> **Draft for internal review — not yet posted.** Venue: a new issue on [tempoxyz/mpp-specs](https://github.com/tempoxyz/mpp-specs/issues) for early design feedback, followed — if there is interest — by a method draft based on `examples/method-template.md` (`draft-picocash-payment-method-00` in `specs/methods/`). Their CONTRIBUTING only *requires* an issue first for core-protocol changes; new methods may go straight to the template, so the issue is our choice, not a mandate. Everything below the rule is the issue text, ready to paste. Review notes at the bottom.
 
 ---
 
 **Proposed issue title:** `RFC: picocash — an eCash payment method (offline-verified, lockable bearer tokens)`
 
-**TL;DR.** We have built and would like feedback on **picocash**, a proposed MPP `charge` method using Chaumian eCash backed 1:1 by a TIP-20 stablecoin on Tempo. A service verifies token authenticity offline against an allowlisted mint keyset — **~45 ms mean** merchant-side in the current reference tests — and, by default, settles the proofs at the mint *before* returning payment success. One on-chain deposit funds many calls with no on-chain transaction on the request path, and the credential exposes no payer address.
+**TL;DR.** We have built and would like feedback on **picocash**, a proposed MPP `charge` method using Chaumian eCash designed to be backed 1:1 by a TIP-20 stablecoin held in the reference vault on Tempo. A service verifies token authenticity offline against an allowlisted mint keyset — **~47 ms mean** merchant-side in the latest reference test run (60 ms max) — and, by default, settles the proofs at the mint *before* returning payment success. One on-chain deposit funds many calls with no on-chain transaction on the request path, and the credential exposes no payer address.
 
 Proofs may also carry **P2PK spending conditions** (PIP-08), so a principal can fund an agent with tokens redeemable only by a named merchant and reclaimable by the principal after a locktime. The reference vault adds timelocked custody changes, operator-outflow rate limits, public reserve/liability reconciliation, and a capped emergency-redemption path. These mechanisms reduce and expose custodial risk; they do not eliminate operator-attestation trust or reconstruct the mint's off-chain spent set.
 
@@ -33,7 +33,6 @@ The reference mppx binding currently uses a flat method-specific request object;
   "currency": "0x20c0000000000000000000000000000000000000",
   "methodDetails": {
     "chainId": 42431,
-    "unit": "tip20:42431:0x20c0000000000000000000000000000000000000",
     "nonce": "<32-byte hex>",
     "mints": [{ "url": "https://mint.picocash.dev", "keysetIds": ["…"] }],
     "pubkey": "<optional service P2PK lock key>"
@@ -42,17 +41,17 @@ The reference mppx binding currently uses a flat method-specific request object;
 ```
 
 - **Credential**: `{ mint, keysetId, proofs[] }` — proofs summing to exactly `amount`, each carrying a DLEQ payload `{e, s, r}` so the service can verify the mint's signature without calling the mint.
-- **Receipt**: `{ challengeId, amount, settlement }` with `settlement ∈ { settled, pending, double-spent }` (see finality below).
+- **Receipt**: the standard MPP receipt fields `{ status, method, timestamp, reference }`, extended with `{ amount, settlement }`. In settle-first mode `status` is `success` and `settlement` is `settled`. The accept-then-settle representation is intentionally left open: a `success` receipt carrying `settlement: pending` does not clearly conform to the current core receipt semantics, which define `success` as verified *and* settled.
 
-Whether the unit should be `currency` + `methodDetails.chainId`, a CAIP-19 asset id, or the current `tip20:<chain_id>:<address>` string is our first schema question.
+This follows the existing Tempo `charge` shape — token address in `currency`, chain id in `methodDetails.chainId` — and the mint unit is derived as `tip20:${chainId}:${currency.toLowerCase()}` rather than carried redundantly. Whether that derivation, a CAIP-19 asset id, or an explicit unit string should be normative is our schema question.
 
 ## Payment flow and finality
 
 1. Service issues a challenge with a fresh 32-byte nonce.
 2. Agent answers with proofs whose secrets commit to the nonce and realm (`PC-BIND`), or with proofs P2PK-locked to `methodDetails.pubkey`.
-3. Service runs six offline checks — challenge single-use → mint/keyset/unit allowlisted → binding → exact amount/denominations → DLEQ per proof → duplicate-proof guard — in ~45 ms, no network.
+3. Service runs six offline checks — challenge single-use → mint/keyset/unit allowlisted → binding → exact amount/denominations → DLEQ per proof → duplicate-proof guard — in ~47 ms, no network.
 4. **Settle-first (default)**: the service swaps the proofs at the mint and returns `success` with `settlement: settled` only after the swap lands. The swap is the moment of finality; a double-spend fails here and the request is rejected.
-5. **Accept-then-settle (opt-in)**: the service returns success on the offline checks with `settlement: pending`, settles asynchronously, and carries an exposure bounded by per-call amount × settlement lag. Whether this mode conforms to `charge` is the first thing we want reviewed.
+5. **Accept-then-settle (opt-in)**: the service accepts on the offline checks, settles asynchronously, and carries an exposure bounded by per-call amount × settlement lag. How this is represented in a receipt — and whether it conforms to `charge` at all — is the first thing we want reviewed.
 
 ## Binding and replay protection
 
@@ -76,7 +75,7 @@ A mint is a custodian, and an eCash mint's *issuance* is unauditable by construc
 - **Rate-limited**: a withdrawal breaker limits operator-controlled outflow to a committed share of backing per epoch; consuming the full allowance latches the vault and opens immediate emergency redemption. A malicious operator can still withdraw *below* the threshold in successive epochs, so monitoring and response time remain security assumptions.
 - **Escapable**: holders can redeem tokens at the vault directly — DLEQ and P2PK witnesses verified on-chain against the registered keyset public key — once the attestation is overdue past a grace period, or immediately when the breaker trips. Payouts are never contract-pausable.
 
-**Emergency redemption is a capped recovery mechanism, not an on-chain reconstruction of the mint ledger.** The vault does not know the mint's off-chain spent set, so stale copies of proofs already spent at the mint may compete with genuinely unspent proofs; redemption is first-come within the attested cap unless an orderly-shutdown spent-set commitment is available. Operator attestation is the residual trust assumption — now rate- and amount-bounded rather than open-ended.
+**Emergency redemption is a capped recovery mechanism, not an on-chain reconstruction of the mint ledger.** The vault does not know the mint's off-chain spent set, so stale copies of proofs already spent at the mint may compete with genuinely unspent proofs; redemption is first-come within the attested cap unless an orderly-shutdown spent-set commitment is available. Operator attestation remains the residual trust assumption; the reference vault makes that risk more observable, rate-limited, and escapable, but does not impose a cumulative bound on malicious withdrawals across epochs.
 
 Full design, limitations, and current Moderato gas/cost measurements with reproducible transaction links: [PIP-04](https://github.com/picocash/pips/blob/main/PIP-04.md) and the repo's SECURITY.md.
 
@@ -88,7 +87,7 @@ Full design, limitations, and current Moderato gas/cost measurements with reprod
 ## Where we'd most value review
 
 1. **Finality and intent.** Settle-first returns success only after the mint swap. Should accept-then-settle remain an optional risk mode under `charge`, require a distinct experimental intent, or return a non-success authorization receipt until settlement?
-2. **MPP schema mapping.** `currency` + `methodDetails.chainId`, CAIP-19, or the current `tip20:<chain>:<address>` identifier? [PIP-01]
+2. **MPP schema mapping.** Derive the unit from `currency` + `methodDetails.chainId` (as proposed), use CAIP-19, or carry the current `tip20:<chain>:<address>` identifier explicitly? [PIP-01]
 3. **Replay and binding.** Is challenge-bound `PC-BIND` plus service-bound P2PK the right split, and what durable replay-store guarantees belong in the method specification itself? [PIP-05, PIP-08]
 4. **Emergency fairness.** Is first-come redemption against an attested cap acceptable when stale spent proofs are indistinguishable on-chain, or should emergency redemption require an orderly-shutdown spent-set commitment, a periodic accumulator, or another anti-replay commitment? [PIP-04]
 5. **P2PK witnesses.** Should `SIG_ALL` (witness also covers swap outputs) be mandatory before signed witnesses travel over untrusted transports? [PIP-08]
@@ -117,7 +116,7 @@ Status: pre-alpha, testnet only, unaudited; an external design review's findings
 1. **Their AI-disclosure rule**: mpp-specs CONTRIBUTING requires disclosure of AI-assisted contributions — the closing line handles it; keep or reword to taste, but don't drop it.
 2. **The issue-number references (#292, #317, #307/#308)** were verified open on 2026-08-21 — reverify before posting, and consider a short comment in #292 the same day linking back to start the cross-pollination.
 3. **Tone**: leads with method semantics, not the project; never names the prior-art protocol (positioning rule) — attribution lives in PIP-00 and PIP-08's header. Custody is a summary section; the full design is linked (PIP-04, SECURITY.md) rather than restated.
-4. **The method-draft offer** follows their documented workflow (issue → template → `specs/methods/`).
+4. **The method-draft offer** is optional under their process (methods may go straight to the template); opening an issue first is a courtesy for design feedback, and the post says so.
 5. **The MPP mapping is a proposal**, not what the mppx binding ships today (flat `{amount, unit, nonce, mints}` request). Saying so in the post is deliberate; the method draft is where it gets pinned down.
 6. **Zones** is two sentences by design — do not expand it into a comparison.
 7. **Volatile numbers** (gas, dollar cost, sequencing latency) are kept out of the issue; PIP-04 §Implementation and cost holds the measurements.
