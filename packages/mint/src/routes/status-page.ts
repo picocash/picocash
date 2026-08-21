@@ -23,7 +23,8 @@ export function statusPage(o: { name: string }): string {
   .card .v { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin-top: 2px; }
   .card .v small { font-size: 13px; font-weight: 500; color: var(--dim); }
   .card .v a, .card .v .mono { font-size: 12px; word-break: break-all; white-space: normal; }
-  .card.pos .v { color: var(--g); } .card.neg .v { color: var(--r); }
+  .card.pos .v { color: var(--g); } .card.neg .v { color: var(--r); } .card.warn .v, .card.warn .note { color: var(--a); }
+  .card .v.caps { letter-spacing: .06em; }
   .card .note { font-size: 13px; font-weight: 600; margin-top: 4px; } .card.pos .note { color: var(--g); } .card.neg .note { color: var(--r); }
   .row3 { display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
   @media (max-width: 720px) { .row3 { grid-template-columns: 1fr; } }
@@ -126,8 +127,16 @@ export function statusPage(o: { name: string }): string {
       el('span', { class: 'mark' }, k.ok === null ? '?' : k.ok ? '✓' : '✗'), el('div', {}, el('b', {}, k.label), el('span', {}, k.detail)))));
 
     const em = c?.emergency;
+    const exitCard = (() => {
+      if (!em) return card('Unilateral exit', 'not available (v1 vault)');
+      const armed = !em.mode && em.grace_blocks > 0 && c.keyset_registered;
+      const n = el('div', { class: 'card ' + (em.mode ? 'neg' : armed ? 'pos' : 'warn') }, el('div', { class: 'k' }, 'Unilateral exit'),
+        el('div', { class: 'v caps' }, em.mode ? 'EMERGENCY MODE' : armed ? 'ARMED' : 'NOT ARMED'));
+      n.append(el('div', { class: 'note' }, 'grace ' + em.grace_blocks + ' blocks · keyset ' + (c.keyset_registered ? 'registered' : 'NOT registered') + ' · redeemed $' + usd(em.redeemed) + ' / cap $' + usd(em.cap)));
+      return n;
+    })();
     $('vault').replaceChildren(
-      card('Vault contract', d.vault ? addrLink(base, d.vault.address) : '—'),
+      exitCard,
       card('Backing token', d.vault ? addrLink(base, d.vault.token) : '—'),
       card('Operator', addrLink(base, c?.operator)),
       card('Publication policy', c ? el('span', {}, (c.publish_interval_blocks ? 'every ' + c.publish_interval_blocks + ' blocks' : '') + (c.publish_threshold_bps ? (c.publish_interval_blocks ? ' or ' : '') + (c.publish_threshold_bps / 100) + '% drift' : '')) : '—'),
@@ -135,7 +144,6 @@ export function statusPage(o: { name: string }): string {
       card('Last publication', c?.last_published_at ? el('span', {}, when(c.last_published_at), el('small', {}, ' · block ' + c.last_published_block + ' (now ' + c.block + ')')) : 'never'),
       card('Melt fee / ceiling', c ? el('span', {}, '$' + usd(d.mint.fees.melt), el('small', {}, ' / ' + (c.max_melt_fee !== null ? '$' + usd(c.max_melt_fee) : 'no ceiling (v1)'))) : '$' + usd(d.mint.fees.melt)),
       card('Rotation timelock', c?.rotation_timelock !== null && c?.rotation_timelock !== undefined ? (c.rotation_timelock / 86400).toFixed(1) + ' days' : '—'),
-      card('Unilateral exit', em ? el('span', {}, em.mode ? 'EMERGENCY MODE' : 'armed', el('small', {}, ' · grace ' + em.grace_blocks + ' blocks · keyset ' + (c.keyset_registered ? 'registered' : 'NOT registered') + ' · redeemed $' + usd(em.redeemed) + ' / cap $' + usd(em.cap))) : 'not available (v1 vault)'),
     );
 
     $('mints').replaceChildren(...d.ledger.mints.map((m) => el('tr', {}, el('td', {}, when(m.at)), el('td', { class: 'num' }, '$' + usd(m.amount)), el('td', {}, el('code', {}, short(m.quote_id))), el('td', {}, txLink(base, m.tx)), el('td', {}, el('span', { class: 'state' }, m.state)))));
