@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { MintContext } from '../context.js';
 import { ApiError } from '../errors.js';
 import { parseBody } from '../validation.js';
+import { relayPage } from './relay-page.js';
 
 /**
  * PIP-07 token-link relay — an OPTIONAL capability. The relay stores only
@@ -65,17 +66,26 @@ export function relayRoutes(ctx: MintContext): Hono {
     return c.json({ ct: row.ct });
   });
 
-  /** A person pasted the link into a browser: hand off to a wallet UI (fragment survives the redirect). */
+  /**
+   * A person opened the link in a browser: serve the reveal page (PIP-07).
+   * Nothing is fetched server-side here — the blob is read only when the user
+   * clicks Reveal, so previews/prefetchers never burn the link. Non-browser
+   * clients get the JSON pointer.
+   */
   app.get('/t/:id', (c) => {
     requireEnabled();
+    const id = c.req.param('id');
     const origin = new URL(c.req.url).origin;
-    const pointer = `${origin}/t/${c.req.param('id')}`;
-    if (relay.uiUrl && (c.req.header('accept') ?? '').includes('text/html')) {
-      const target = new URL(relay.uiUrl);
-      target.searchParams.set('link', pointer);
-      return c.redirect(target.toString(), 302);
+    const pointer = `${origin}/t/${id}`;
+    const resolve = `${origin}/v1/relay/${id}`;
+    if (B64URL.test(id) && id.length === 22 && (c.req.header('accept') ?? '').includes('text/html')) {
+      c.header('cache-control', 'no-store');
+      c.header('referrer-policy', 'no-referrer');
+      c.header('x-robots-tag', 'noindex');
+      c.header('content-security-policy', "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'");
+      return c.html(relayPage({ mintName: ctx.config.name, resolveUrl: resolve, walletUrl: relay.uiUrl, pointer }));
     }
-    return c.json({ link: pointer, resolve: `${origin}/v1/relay/${c.req.param('id')}`, note: 'PIP-07 token link: fetch the ciphertext, decrypt with the key in the URL fragment' });
+    return c.json({ link: pointer, resolve, note: 'PIP-07 token link: fetch the ciphertext, decrypt with the key in the URL fragment' });
   });
 
   return app;
