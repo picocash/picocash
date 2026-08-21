@@ -24,6 +24,7 @@ export function statusPage(o: { name: string }): string {
   .card .v small { font-size: 13px; font-weight: 500; color: var(--dim); }
   .card .v a, .card .v .mono { font-size: 12px; word-break: break-all; white-space: normal; }
   .card.pos .v { color: var(--g); } .card.neg .v { color: var(--r); }
+  .card .note { font-size: 13px; font-weight: 600; margin-top: 4px; } .card.pos .note { color: var(--g); } .card.neg .note { color: var(--r); }
   .row3 { display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 12px; }
   @media (max-width: 720px) { .row3 { grid-template-columns: 1fr; } }
   .checks { display:grid; gap: 8px; }
@@ -90,7 +91,7 @@ export function statusPage(o: { name: string }): string {
     const c = d.chain;
     $('sub').replaceChildren('unit ', el('code', {}, d.mint.unit), ' · keyset ', el('code', {}, d.mint.keyset.id), ' · vault ', d.vault ? addrLink(base, d.vault.address) : el('code', {}, 'fake'), ' · ', d.mint.melt ? 'melt enabled' : 'melt disabled', ' · updated ', when(d.generated_at));
 
-    const signedCard = (k, delta, note) => {
+    const _unused = (k, delta, note) => {
       const cls = delta > 0 ? 'pos' : delta < 0 ? 'neg' : '';
       const sign = delta > 0 ? '+' : delta < 0 ? '−' : '';
       return el('div', { class: 'card ' + cls }, el('div', { class: 'k' }, k), el('div', { class: 'v' }, sign + '$' + usd(Math.abs(delta)), ' ', el('small', {}, (delta >= 0 ? '' : '-') + Math.abs(delta) + ' base' + (note ? ' · ' + note : ''))));
@@ -99,13 +100,26 @@ export function statusPage(o: { name: string }): string {
     $('glance1').replaceChildren(
       card('Vault balance (on-chain)', c ? money(c.balance) : '—'),
       card('Minted token balance (outstanding)', money(d.books.outstanding)),
-      bal === null ? card('Vault − minted', '—') : signedCard('Vault − minted', bal - d.books.outstanding, bal - d.books.outstanding >= 0 ? 'fully backed' : 'UNDER-BACKED'),
+      (() => {
+        if (bal === null) return card('Vault − minted', '—');
+        const diff = bal - d.books.outstanding;
+        const n = el('div', { class: 'card ' + (diff >= 0 ? 'pos' : 'neg') }, el('div', { class: 'k' }, 'Vault − minted'), el('div', { class: 'v' }, (diff >= 0 ? '+' : '−') + '$' + usd(Math.abs(diff)), ' ', el('small', {}, diff + ' base')));
+        n.append(el('div', { class: 'note' }, diff >= 0 ? '✓ every token is backed' + (diff > 0 ? ' (surplus = retained melt fees)' : '') : '✗ UNDER-BACKED by $' + usd(Math.abs(diff))));
+        return n;
+      })(),
     );
     const net = d.books.deposits - d.books.payouts;
     $('glance2').replaceChildren(
       card('Total mint deposits', el('span', {}, money(d.books.deposits), el('small', {}, ' · ' + d.books.deposit_count + ' quotes'))),
       card('Total mint withdrawals', el('span', {}, money(d.books.payouts), el('small', {}, ' · ' + d.books.payout_count + ' melts · fees kept $' + usd(d.books.fees_retained)))),
-      bal === null ? card('Deposits − withdrawals', money(net)) : signedCard('Deposits − withdrawals vs vault', bal - net, 'vault ' + usd(bal) + ' vs net ' + usd(net) + (bal - net === 0 ? ' · matches' : ' · MISMATCH')),
+      (() => {
+        const n = el('div', { class: 'card' + (bal === null ? '' : bal - net === 0 ? ' pos' : ' neg') }, el('div', { class: 'k' }, 'Deposits − withdrawals'), el('div', { class: 'v' }, '$' + usd(net), ' ', el('small', {}, net + ' base')));
+        if (bal !== null) {
+          const diff = bal - net;
+          n.append(el('div', { class: 'note' }, diff === 0 ? '✓ equals the vault balance' : '✗ vault balance is $' + usd(Math.abs(diff)) + (diff > 0 ? ' higher' : ' lower') + ' than deposits − withdrawals'));
+        }
+        return n;
+      })(),
     );
 
     $('checks').replaceChildren(...d.checks.map((k) => el('div', { class: 'check ' + (k.ok === null ? 'na' : k.ok ? 'ok' : 'bad') },
