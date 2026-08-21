@@ -1,6 +1,6 @@
 # RFC: `picocash` — an eCash payment method for MPP
 
-> **Draft for internal review — not yet posted.** Venue: a new issue on [tempoxyz/mpp-specs](https://github.com/tempoxyz/mpp-specs/issues) for early design feedback, followed — if there is interest — by a method draft based on `examples/method-template.md` (`draft-picocash-payment-method-00` in `specs/methods/`). Their CONTRIBUTING only *requires* an issue first for core-protocol changes; new methods may go straight to the template, so the issue is our choice, not a mandate. Everything below the rule is the issue text, ready to paste. Review notes at the bottom.
+> **Posted 2026-08-21 as [tempoxyz/mpp-specs#327](https://github.com/tempoxyz/mpp-specs/issues/327).** Venue was: a new issue on [tempoxyz/mpp-specs](https://github.com/tempoxyz/mpp-specs/issues) for early design feedback, followed — if there is interest — by a method draft based on `examples/method-template.md` (`draft-picocash-payment-method-00` in `specs/methods/`). Their CONTRIBUTING only *requires* an issue first for core-protocol changes; new methods may go straight to the template, so the issue is our choice, not a mandate. Everything below the rule is the issue text, ready to paste. Review notes at the bottom.
 
 ---
 
