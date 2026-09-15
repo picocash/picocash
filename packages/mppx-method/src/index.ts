@@ -1,4 +1,5 @@
 export { PicocashAcceptor, MemoryAcceptorStore, type AcceptorOptions, type AcceptorStore, type ChallengeState } from './acceptor.js';
+export { KvAcceptorStore, type KvClient, type KvAcceptorStoreOptions } from './kv-store.js';
 export { payChallenge } from './agent.js';
 export {
   CredentialRejected,

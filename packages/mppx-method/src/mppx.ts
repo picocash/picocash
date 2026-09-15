@@ -27,7 +27,14 @@ const proofSchema = z.object({
   dleq: z.object({ e: z.string(), s: z.string(), r: z.string() }),
 });
 
-/** The wire method definition (Method.from): name, intent, schemas. */
+/**
+ * The wire method definition (Method.from): name, intent, schemas.
+ *
+ * The request follows the shared MPP `charge` shape (draft-picocash-charge-00):
+ * `amount` + `currency` (the TIP-20 token address) at the top level, with
+ * method-specific data under `methodDetails`. The mint unit is DERIVED as
+ * `tip20:${chainId}:${currency.toLowerCase()}`, never carried redundantly.
+ */
 export const picocashMethod = Method.from({
   name: 'picocash',
   intent: 'charge',
@@ -35,15 +42,23 @@ export const picocashMethod = Method.from({
     request: z.object({
       /** Base units as a decimal string, mppx convention. */
       amount: z.string(),
-      unit: z.string(),
-      /** 32-byte hex; PC-BIND secrets commit to it. Inject per-challenge via `request` hook or `defaults`. */
-      nonce: z.string(),
-      mints: z.array(z.object({ url: z.string(), keyset_ids: z.array(z.string()) })),
+      /** TIP-20 token address backing the accepted proofs. */
+      currency: z.string(),
+      methodDetails: z.object({
+        /** Chain id of the network the backing token lives on. */
+        chainId: z.number(),
+        /** 32-byte hex; PC-BIND secrets commit to it. Injected per-challenge by the `request` hook. */
+        nonce: z.string(),
+        mints: z.array(z.object({ url: z.string(), keysetIds: z.array(z.string()) })),
+        /** Optional service P2PK lock key (PIP-08 binding). */
+        pubkey: z.optional(z.string()),
+      }),
     }),
     credential: {
       payload: z.object({
+        type: z.literal('proofs'),
         mint: z.string(),
-        keyset_id: z.string(),
+        keysetId: z.string(),
         proofs: z.array(proofSchema),
       }),
     },
@@ -52,22 +67,29 @@ export const picocashMethod = Method.from({
 
 type MppxChallenge = Challenge.Challenge<z.output<(typeof picocashMethod)['schema']['request']>, 'charge', 'picocash'>;
 
+/** Unit derivation per draft-picocash-charge-00 §6.1.1. */
+export function unitOf(chainId: number, currency: string): string {
+  return `tip20:${chainId}:${currency.toLowerCase()}`;
+}
+
 function toPicocashChallenge(challenge: MppxChallenge): PicocashChallenge {
+  const details = challenge.request.methodDetails;
   return {
     method: 'picocash',
     realm: challenge.realm,
     challenge_id: challenge.id,
-    nonce: challenge.request.nonce,
+    nonce: details.nonce,
     amount: Number(challenge.request.amount),
-    unit: challenge.request.unit,
-    mints: challenge.request.mints,
+    unit: unitOf(details.chainId, challenge.request.currency),
+    mints: details.mints.map((m) => ({ url: m.url, keyset_ids: m.keysetIds })),
+    ...(details.pubkey !== undefined ? { pubkey: details.pubkey } : {}),
     // mppx enforces expiry itself (HMAC-bound `expires`); mirror it for the acceptor.
     expiry: challenge.expires ? Math.floor(Date.parse(challenge.expires) / 1000) : Math.floor(Date.now() / 1000) + 300,
   };
 }
 
 function toPicocashCredential(challengeId: string, payload: z.output<(typeof picocashMethod)['schema']['credential']['payload']>): PicocashCredential {
-  return { method: 'picocash', challenge_id: challengeId, mint: payload.mint, keyset_id: payload.keyset_id, proofs: payload.proofs };
+  return { method: 'picocash', challenge_id: challengeId, mint: payload.mint, keyset_id: payload.keysetId, proofs: payload.proofs };
 }
 
 /** Fresh nonce for a challenge — wire this into the server's `request` hook. */
@@ -93,7 +115,7 @@ export function picocash(options: PicocashClientOptions) {
       return Credential.serialize(
         Credential.from({
           challenge,
-          payload: { mint: credential.mint, keyset_id: credential.keyset_id, proofs: credential.proofs },
+          payload: { type: 'proofs', mint: credential.mint, keysetId: credential.keyset_id, proofs: credential.proofs },
         }),
       );
     },
@@ -157,7 +179,10 @@ export function picocashCharge(options: PicocashChargeOptions) {
       return {
         method: 'picocash',
         status: 'success' as const,
-        timestamp: new Date(receipt.accepted_at * 1000).toISOString(),
+        // Settle-first: the timestamp is the settlement point (the mint swap),
+        // per draft-picocash-charge-00 §Receipt Generation. In the deferred
+        // mode it is the offline-accept time and settlement is 'pending'.
+        timestamp: mode === 'settle-first' ? new Date().toISOString() : new Date(receipt.accepted_at * 1000).toISOString(),
         reference: receipt.challenge_id,
         // method-specific extension fields (preserved by Receipt schema)
         settlement: receipt.settlement,
@@ -165,4 +190,51 @@ export function picocashCharge(options: PicocashChargeOptions) {
       };
     },
   });
+}
+
+export interface PicocashRouterChargeConfig {
+  acceptor: PicocashAcceptor;
+  /** The service wallet that receives the swapped proofs (settle-first). */
+  wallet: Wallet;
+  /** TIP-20 token address backing accepted proofs (`currency` on the wire). */
+  currency: string;
+  /** Chain id the backing token lives on (Tempo Moderato: 42431). */
+  chainId: number;
+  /** Mint allowlist advertised in every challenge. */
+  mints: Array<{ url: string; keysetIds: string[] }>;
+  /** Optional service P2PK lock key (PIP-08 binding). */
+  pubkey?: string;
+  onAccepted?: (receipt: PicocashReceipt) => void;
+}
+
+/**
+ * Router-ergonomic server method, mirroring `tempo.charge(config)`: bakes the
+ * static offer (`currency`, `methodDetails`) into `defaults` and injects a
+ * fresh nonce per challenge, so a host that only supplies `{ amount }` at
+ * challenge time (e.g. @agentcash/router) can offer picocash unchanged.
+ * Settle-first only — the router's settle hook is the moment `success` is
+ * allowed to exist.
+ */
+export function charge(config: PicocashRouterChargeConfig): Method.AnyServer {
+  const base = picocashCharge({
+    acceptor: config.acceptor,
+    wallet: config.wallet,
+    ...(config.onAccepted ? { onAccepted: config.onAccepted } : {}),
+  });
+  return {
+    ...base,
+    defaults: {
+      currency: config.currency,
+      methodDetails: {
+        chainId: config.chainId,
+        nonce: '', // placeholder; the request hook below replaces it per challenge
+        mints: config.mints,
+        ...(config.pubkey !== undefined ? { pubkey: config.pubkey } : {}),
+      },
+    },
+    request: ({ request }: { request: z.input<(typeof picocashMethod)['schema']['request']> }) => ({
+      ...request,
+      methodDetails: { ...request.methodDetails, nonce: freshNonce() },
+    }),
+  };
 }

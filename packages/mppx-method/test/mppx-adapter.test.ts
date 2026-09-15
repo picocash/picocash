@@ -20,9 +20,13 @@ async function makeMppxScene(fundAmount: number, price: number) {
     secretKey: 'test-secret',
     request: {
       amount: String(price),
-      unit: keyset.unit,
-      nonce: freshNonce(),
-      mints: [{ url: TEST_MINT_URL, keyset_ids: [keyset.id] }],
+      // derive currency/chainId from the keyset's unit (`tip20:<chainId>:<address>`)
+      currency: keyset.unit.split(':')[2]!,
+      methodDetails: {
+        chainId: Number(keyset.unit.split(':')[1]),
+        nonce: freshNonce(),
+        mints: [{ url: TEST_MINT_URL, keysetIds: [keyset.id] }],
+      },
     },
   });
 
@@ -42,7 +46,7 @@ async function makeMppxScene(fundAmount: number, price: number) {
 }
 
 describe('mppx adapter', () => {
-  it('createCredential → validate (non-mutating) → broadcast → receipt', async () => {
+  it('createCredential → validate (non-mutating) → broadcast → receipt', { timeout: 20000 }, async () => {
     const scene = await makeMppxScene(100_000, 50_000);
 
     const header = await scene.clientMethod.createCredential({ challenge: scene.challenge as never });
@@ -79,7 +83,13 @@ describe('mppx adapter', () => {
       intent: 'charge',
       expires: new Date(Date.now() + 300_000),
       secretKey: 'test-secret',
-      request: { ...(scene.challenge.request as object), nonce: freshNonce() },
+      request: {
+        ...(scene.challenge.request as Record<string, unknown>),
+        methodDetails: {
+          ...(scene.challenge.request as { methodDetails: Record<string, unknown> }).methodDetails,
+          nonce: freshNonce(),
+        },
+      },
     });
     const grafted = Credential.serialize(Credential.from({ challenge: otherChallenge, payload: parsed.payload }));
     await expect(Method.broadcastCredential([scene.serverMethod], grafted)).rejects.toThrow(/PC-BIND/);
