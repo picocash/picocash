@@ -18,7 +18,7 @@ import { charge } from '@picocash/mppx-method/mppx';
 
 const MINT_URL = process.env.MINT_URL ?? 'https://mint.picocash.dev';
 const PORT = Number(process.env.PORT ?? 8402);
-const PRICE = process.env.PRICE ?? '10000'; // $0.01 in pathUSD base units (6 decimals)
+const PRICE = process.env.PRICE ?? '0.01'; // dollars; charge() converts to base units
 // mppx requires a >=32-byte challenge-signing secret. Demo-only; rotate in prod.
 const SECRET_KEY = process.env.MPP_SECRET_KEY ?? 'picocash-agentcash-demo-secret-key-32b+';
 

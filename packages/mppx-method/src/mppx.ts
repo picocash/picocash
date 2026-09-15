@@ -202,20 +202,36 @@ export interface PicocashRouterChargeConfig {
   chainId: number;
   /** Mint allowlist advertised in every challenge. */
   mints: Array<{ url: string; keysetIds: string[] }>;
+  /**
+   * Decimals of the backing token, used to convert the router's decimal-dollar
+   * price string into base units (`tempo.charge` does the same). pathUSD = 6.
+   * @default 6
+   */
+  decimals?: number;
   /** Optional service P2PK lock key (PIP-08 binding). */
   pubkey?: string;
   onAccepted?: (receipt: PicocashReceipt) => void;
 }
 
+/** Decimal-dollar string → integer base-unit string, no float rounding error. */
+export function toBaseUnits(amount: string, decimals: number): string {
+  const neg = amount.startsWith('-');
+  const [whole, frac = ''] = (neg ? amount.slice(1) : amount).split('.');
+  if (frac.length > decimals) throw new Error(`amount ${amount} has more than ${decimals} decimal places`);
+  const digits = `${whole}${frac.padEnd(decimals, '0')}`.replace(/^0+(?=\d)/, '');
+  return (neg ? '-' : '') + (digits || '0');
+}
+
 /**
  * Router-ergonomic server method, mirroring `tempo.charge(config)`: bakes the
- * static offer (`currency`, `methodDetails`) into `defaults` and injects a
- * fresh nonce per challenge, so a host that only supplies `{ amount }` at
- * challenge time (e.g. @agentcash/router) can offer picocash unchanged.
- * Settle-first only — the router's settle hook is the moment `success` is
- * allowed to exist.
+ * static offer (`currency`, `methodDetails`) into `defaults`, converts the
+ * host's decimal-dollar price to base units, and injects a fresh nonce per
+ * challenge — so a host that only supplies a dollar `{ amount }` at challenge
+ * time (e.g. @agentcash/router) can offer picocash unchanged. Settle-first
+ * only — the router's settle hook is the moment `success` is allowed to exist.
  */
 export function charge(config: PicocashRouterChargeConfig): Method.AnyServer {
+  const decimals = config.decimals ?? 6;
   const base = picocashCharge({
     acceptor: config.acceptor,
     wallet: config.wallet,
@@ -234,6 +250,8 @@ export function charge(config: PicocashRouterChargeConfig): Method.AnyServer {
     },
     request: ({ request }: { request: z.input<(typeof picocashMethod)['schema']['request']> }) => ({
       ...request,
+      // charge() is dollar-denominated like tempo.charge; the wire amount is base units.
+      amount: toBaseUnits(request.amount, decimals),
       methodDetails: { ...request.methodDetails, nonce: freshNonce() },
     }),
   };

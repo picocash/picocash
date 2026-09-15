@@ -57,7 +57,7 @@ async function makeRouterScene(fundAmount: number) {
 describe('router-style charge (Mppx.create + config defaults)', () => {
   it('challenge → pay → receipt through the middleware, router-style', { timeout: 20000 }, async () => {
     const scene = await makeRouterScene(100_000);
-    const middleware = (scene.mppx as any).charge({ amount: '50000' });
+    const middleware = (scene.mppx as any).charge({ amount: '0.05' }); // $0.05
 
     // 1. bare request → 402 challenge advertising picocash
     const first = await middleware(new Request('https://router.test/api/fortune'));
@@ -94,7 +94,7 @@ describe('router-style charge (Mppx.create + config defaults)', () => {
 
   it('two nonces differ across challenges (request hook injects fresh)', async () => {
     const scene = await makeRouterScene(1_000);
-    const middleware = (scene.mppx as any).charge({ amount: '100' });
+    const middleware = (scene.mppx as any).charge({ amount: '0.0001' }); // 100 base units
     const { Challenge } = await import('mppx');
     const a = await middleware(new Request('https://router.test/a'));
     const b = await middleware(new Request('https://router.test/b'));
