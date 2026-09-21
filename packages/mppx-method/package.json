@@ -1,7 +1,7 @@
 {
   "name": "@picocash/mppx-method",
   "version": "0.1.0",
-  "description": "MPP custom payment method 'picocash': challenge \u2192 credential \u2192 receipt with sub-100ms offline verification and accept-then-settle (PIP-05)",
+  "description": "MPP custom payment method 'picocash': challenge → credential → receipt with sub-100ms offline verification and accept-then-settle (PIP-05)",
   "license": "Apache-2.0",
   "type": "module",
   "main": "dist/index.js",
@@ -24,8 +24,9 @@
     "test": "vitest run --fileParallelism=false"
   },
   "dependencies": {
-    "@picocash/crypto": "*",
-    "@picocash/sdk": "*"
+    "@picocash/crypto": "^0.1.0",
+    "@picocash/sdk": "^0.1.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@noble/hashes": "^1.8.0",
@@ -34,7 +35,6 @@
     "typescript": "^5.6.0",
     "vitest": "^3.0.0",
     "mppx": "^0.8.17",
-    "zod": "^4.4.3",
     "viem": "^2.55.19"
   },
   "peerDependencies": {
@@ -44,5 +44,17 @@
     "mppx": {
       "optional": true
     }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/picocash/picocash.git",
+    "directory": "packages/mppx-method"
+  },
+  "homepage": "https://github.com/picocash/picocash/tree/main/packages/mppx-method#readme",
+  "bugs": {
+    "url": "https://github.com/picocash/picocash/issues"
   }
 }
