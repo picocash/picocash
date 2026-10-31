@@ -13,4 +13,5 @@ export { canonicalPcBind, parsePcBindSecret, pcBindSecretHex, randomSecretHex, t
 export { serializeToken, parseToken, TokenFormatError, TOKEN_LIMITS } from './token.js';
 export { createTokenLink, resolveTokenLink, parseTokenLink, isAllowedRelayUrl, encryptToken, decryptToken } from './link.js';
 export { signProofs, lockOf } from './p2pk.js';
+export { lockKeyFromNpub, privkeyFromNsec, npubFromPubkey, signerFromNsec, type NostrSigner } from './nostr.js';
 export { p2pkSecretHex, p2pkPublicKey, parseP2pkSecret, verifyP2pkSpend, signP2pk, p2pkWitness } from '@picocash/crypto';
