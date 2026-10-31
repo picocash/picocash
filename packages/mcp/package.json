@@ -1,0 +1,48 @@
+{
+  "name": "@picocash/mcp",
+  "version": "0.1.0",
+  "description": "picocash wallet as an MCP server: lets any agent (Buzz, Claude Code, goose, Hermes) hold and spend eCash with the Nostr key it already has — balance, pay 402s, send npub-locked tokens, receive, melt.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "picocash-mcp": "dist/bin.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/picocash/picocash.git",
+    "directory": "packages/mcp"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run --fileParallelism=false",
+    "start": "node dist/bin.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "@picocash/crypto": "^0.1.0",
+    "@picocash/mppx-method": "^0.1.0",
+    "@picocash/sdk": "^0.1.0",
+    "mppx": "^0.8.17",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@picocash/mint": "*",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0",
+    "hono": "^4.6.0"
+  }
+}
