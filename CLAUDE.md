@@ -58,13 +58,15 @@ Secrets live in gitignored files only: `packages/mint/.env` (dev mint + deployer
 - Headline phrasing is "for AI agent payments". Never claim auto-exit; unilateral exit (emergency redemption) is live and may be claimed.
 - Buzz (Block) uses "mint" for persona cards — in Buzz-facing copy say "the picocash mint service".
 
-## Where things stand (2026-08-22)
+## Where things stand (2026-10-31)
 
-- RFC posted: https://github.com/tempoxyz/mpp-specs/issues/327 (source `spec/rfc-announcement.md`); linking comment on #292. Watch for replies; if there's interest, submit `draft-picocash-payment-method-00` from their `examples/method-template.md`.
-- **TODO (committed in the RFC, not built):** align the mppx binding with MPP core — `currency` + `methodDetails.chainId` (unit derived as `tip20:${chainId}:${currency.toLowerCase()}`), standard receipt fields `{status, method, timestamp, reference}` + `{amount, settlement}`, JCS. Accept-then-settle receipt form is deliberately open.
-- **Next product direction: a wallet for Buzz agents** (Block's Nostr workspace, `github.com/block/buzz`). Plan at `~/.claude/plans/modular-munching-spindle.md`; memo artifact "picocash × Buzz". Decisions: `@picocash/mcp` MCP server signing with the agent's own nsec (BIP-340 = our P2PK key), proofs stored as a NIP-AE engram, first demo = owner funds agent with npub-locked tokens → agent pays an MPP-gated LLM proxy (`apps/paid-llm`, to be built). Treasury agent second; no custodial bot.
-- Deferred: a9n9 integration + credits keyset (step 9), mainnet behind caps (step 10), Base port (allowance-deposit oracle, `erc20:` unit namespace).
-- Housekeeping for Arun: re-add `_github-pages-challenge-picocash` TXT in Cloudflare DNS; confirm SSL Full (strict); rotate the Conduit RPC key.
+- **Standards track is closed-for-now, by adoption not design.** mpp-specs PR #342 and issue #327 were closed 2026-10-25 ("network too small … upstream later once it gets more popularity"). Do not reopen or re-argue. The method draft (`draft-picocash-charge-00`) lives on in our fork branch; traction is the path back.
+- **Adoption vectors, both live:** (1) AgentCash — fork `starbackr-dev/agentcash-router@add-picocash-method` adds picocash as a third MPP charge mode, verified E2E, consumes the published npm packages, mergeable; Merit issue #324 open, nudged 2026-10-31, awaiting reply. (2) **Buzz agent wallet — built.** See below.
+- **npm:** `@picocash/{crypto,sdk,mppx-method}@0.1.0` published (owner npm user `starbuilder`, org `picocash`; release steps in memory `npm-packages`). **Not yet published:** `@picocash/mcp`, and `@picocash/sdk` has grown new exports since 0.1.0 (nostr, store, engram, nip44, relay) — a coordinated 0.2.0 release is needed before `npx @picocash/mcp` works as the README claims. Arun's call.
+- **Buzz wallet (plan `~/.claude/plans/modular-munching-spindle.md`) — implemented end to end, all in-process tested:** `packages/sdk` nostr adapter (parity-robust `signerFromNsec`), `ProofStore` (reserve→commit|release) with file + NIP-AE engram backends (byte-exact vs Buzz's pinned vectors), `packages/mcp` (`picocash-mcp` stdio server, six tools; `picocash-owner` reads an agent's wallet with the owner key), `apps/paid-llm` (OpenAI-compatible proxy charging picocash per request, underpay guard, merchant-locked budgets). Spec: `pips/PIP-09`. **Not yet done:** smoke test against a *real* Buzz relay (needs a relay URL + member nsec from Arun; this box has no Buzz install), running under `buzz-acp`/Hermes, a live-inference run (no provider API key on this box), treasury agent (phase 2).
+- **Known product constraint:** merchant-locked budgets pay only exact subset-sums (agent can't re-denominate them) → fund in units of the merchant's prices; wallet falls back to open balance otherwise. Protocol fix proposed in PIP-08 open questions (lock-preserving unsigned re-denomination).
+- Mainnet: `spec/mainnet-plan.md` (reviewed; gates = legal, audit of custody AND issuance, mint signing-key custody). Deferred: a9n9 + credits keyset, Base port.
+- Housekeeping for Arun: re-add `_github-pages-challenge-picocash` TXT in Cloudflare DNS; confirm SSL Full (strict); rotate the Conduit RPC key; the hosted mint's solvency cron lapsed once (republished manually 2026-09-15) — check the Worker cron.
 
 ## Local-environment quirks
 

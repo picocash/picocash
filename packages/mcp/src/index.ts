@@ -2,3 +2,4 @@ export { WalletService, type WalletServiceOptions, type BalanceReport, type Paid
 export { createMcpServer } from './server.js';
 export { configFromEnv, type McpConfig } from './config.js';
 export { buildStore } from './store-factory.js';
+export { ownerView, formatOwnerView, type OwnerView } from './owner.js';
