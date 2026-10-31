@@ -1,0 +1,19 @@
+# Reference compose for running the monitor as a container. The deployment on
+# the home server lives in ~/reserves/docker-compose.yml (state + secrets
+# outside the repo) and points its build context at this directory.
+services:
+  reserves:
+    build: .
+    container_name: tempo-reserves
+    restart: unless-stopped
+    ports:
+      - "8790:8790"
+    env_file:
+      - .env            # REFRESH_TOKEN=…  (mode 600, never committed)
+    environment:
+      TEMPO_RPC: https://rpc.tempo.xyz
+      TEMPO_CHAIN_ID: "4217"
+      TIP20_FACTORY: "0x20fc000000000000000000000000000000000000"
+      REFRESH_INTERVAL_MS: "600000"
+    volumes:
+      - ./data:/data

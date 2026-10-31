@@ -9,3 +9,5 @@ coverage/
 .DS_Store
 claude-chat.md
 crypto-v0.1.generated.json
+.dev.vars
+apps/reserves/data/

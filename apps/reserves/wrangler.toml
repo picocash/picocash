@@ -1,0 +1,23 @@
+name = "tempo-reserves"
+main = "src/worker.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+workers_dev = true
+
+# Snapshots, registry, and history live in KV. Create with:
+#   wrangler kv namespace create RESERVES
+[[kv_namespaces]]
+binding = "RESERVES"
+id = "local-dev-namespace"
+
+# Refresh on-chain + issuer data every 10 minutes; hourly history is derived from it.
+[triggers]
+crons = ["*/10 * * * *"]
+
+[observability]
+enabled = true
+
+[vars]
+TEMPO_RPC = "https://rpc.tempo.xyz"
+TEMPO_CHAIN_ID = "4217"
+TIP20_FACTORY = "0x20fc000000000000000000000000000000000000"
