@@ -26,4 +26,8 @@ export {
   type HistoryEntry,
   type HistoryKind,
 } from './store.js';
+export { conversationKey, encrypt as nip44Encrypt, decrypt as nip44Decrypt, Nip44Error } from './nip44.js';
+export { eventId, finalizeEvent, verifyEvent, pubkeyOf, type NostrEvent, type EventTemplate } from './nostr-event.js';
+export { Relay, RelayError, type RelayFilter, type RelayOptions } from './relay.js';
+export { EngramProofStore, readWalletAsOwner, engramDTag, ConflictError, ENGRAM_KIND, WALLET_SLUG, type EngramStoreOptions } from './engram-store.js';
 export { p2pkSecretHex, p2pkPublicKey, parseP2pkSecret, verifyP2pkSpend, signP2pk, p2pkWitness } from '@picocash/crypto';
