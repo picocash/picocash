@@ -184,6 +184,31 @@ describe('@picocash/mcp', () => {
     expect(kinds).toEqual(['melt:-2000', 'send:-5000', `pay:-${PRICE_BASE}`, 'pay:0', 'mint:100000']);
   });
 
+  it('receive holds a MERCHANT-locked budget unswapped, reports it separately, and dedupes a re-send', async () => {
+    const merchantKey = secp256k1.utils.randomPrivateKey();
+    const merchantLock = `0${(secp256k1.getPublicKey(merchantKey, true)[0] === 3 ? '3' : '2')}${pubkeyOf(merchantKey)}`;
+    const owner = new Wallet({ mintUrl: TEST_MINT_URL, fetchImpl: mint.fetchImpl });
+    const q = await owner.requestMintQuote(1500);
+    mint.fakeVault.simulateDeposit(q.quote_id, 1500);
+    const minted = await owner.mintProofs(q.quote_id, 1500);
+    const { token } = await owner.sendLocked(minted, 1500, merchantLock);
+
+    const before = await callTool(client, 'balance');
+    const r = await callTool(client, 'receive', { token });
+    expect(r.isError).toBe(false);
+    expect(r.data.held_locked).toBe(true);
+    expect(r.data.amount).toBe(1500);
+    expect(r.data.from_lock).toBe(npubFromPubkey(merchantLock));
+
+    const after = await callTool(client, 'balance');
+    expect(after.data.locked_to_merchants).toBe(before.data.locked_to_merchants + 1500);
+    expect(after.data.spendable).toBe(before.data.spendable); // not spendable anywhere else
+
+    // the same token again adds nothing (Y-dedupe) and cannot be sent on by us
+    await callTool(client, 'receive', { token });
+    expect((await callTool(client, 'balance')).data.locked_to_merchants).toBe(before.data.locked_to_merchants + 1500);
+  });
+
   it('rejects malformed tool input at the schema boundary', async () => {
     const r = await callTool(client, 'melt', { amount: 1, to: 'not-an-address' });
     expect(r.isError).toBe(true);

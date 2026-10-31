@@ -1,0 +1,26 @@
+{
+  "name": "@picocash/paid-llm",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "An OpenAI-compatible inference proxy that charges picocash per request. Holds the vendor key server-side so agents can run inference with no API key in their environment — only a budget.",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "test": "vitest run --fileParallelism=false"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "@picocash/crypto": "*",
+    "@picocash/mppx-method": "*",
+    "@picocash/sdk": "*",
+    "hono": "^4.6.14",
+    "mppx": "^0.8.17"
+  },
+  "devDependencies": {
+    "@picocash/mcp": "*",
+    "@picocash/mint": "*",
+    "@noble/hashes": "^1.8.0",
+    "tsx": "^4.19.2",
+    "vitest": "^3.0.0"
+  }
+}

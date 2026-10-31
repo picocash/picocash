@@ -86,7 +86,7 @@ export function createMcpServer(service: WalletService): McpServer {
     'receive',
     {
       title: 'Receive eCash',
-      description: 'Claim a picocash token string or short link that was sent to this agent. Verifies it offline, unlocks it with this agent\'s key if it was locked to us, and swaps it into fresh proofs so the sender can no longer spend it.',
+      description: 'Claim a picocash token string or short link that was sent to this agent. Verifies it offline; if it was locked to this agent (or unlocked) it is swapped into fresh proofs so the sender can no longer spend it. If it is a budget locked to a MERCHANT (spendable only there), it is held as-is and shows under locked_to_merchants; fetch_paid uses it automatically at that merchant.',
       inputSchema: { token: z.string().min(1).describe('A picoA token string or a https://…/t/… link') },
     },
     async ({ token }) => {
