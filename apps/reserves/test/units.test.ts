@@ -68,7 +68,17 @@ describe('checks', () => {
     const byId = Object.fromEntries(checks.map((c) => [c.id, c]));
     expect(byId.supply_matches_chain!.ok).toBe(true); // 892.9M vs 893.25M within 0.1%
     expect(byId.supply_matches_chain!.label).toMatch(/across all chains/);
+    // Tempo is stated first, as a share of the issuer total; the cross-chain sum is the reconciliation.
+    expect(byId.supply_matches_chain!.detail).toMatch(/^Tempo \$599,800,000\.00 is 67\.1\d+% of the issuer's \$893,248,150\.03 \(all chains\)\. Across all chains: Tempo \+ Ethereum .* = \$892,900,000\.00 vs issuer → within tolerance/);
+    expect(byId.reserves_cover_chain!.detail).toMatch(/^\$895,248,267\.45 reserves vs \$599,800,000\.00 on Tempo → covered, surplus \$295,448,267\.45\. Across all chains \$892,900,000\.00 → covered, surplus \$2,348,267\.45$/);
     expect(byId.reserves_cover_supply!.detail).toMatch(/surplus \$2,000,117/);
+  });
+  it('Tempo alone exceeding the issuer total is red even if other legs would net it out', () => {
+    const issuer = parseIssuerReport('ousd', OUSD); // 893.1M total
+    const checks = runChecks({ ...base, symbol: 'OUSD', tempoSupply: 900_000_000_000_000n, otherChains: [{ chain: 'Base', usd: 1 }], issuer, issuerAgeSeconds: 100 });
+    const c = checks.find((x) => x.id === 'supply_matches_chain')!;
+    expect(c.ok).toBe(false);
+    expect(c.detail).toMatch(/Tempo alone EXCEEDS/);
   });
   it('a real shortfall is red with the gap in dollars', () => {
     const issuer = parseIssuerReport('x', { ...PATH_USD, total_reserve_amount: '39000000.00' });
@@ -76,6 +86,13 @@ describe('checks', () => {
     const c = checks.find((x) => x.id === 'reserves_cover_supply')!;
     expect(c.ok).toBe(false);
     expect(c.detail).toMatch(/SHORTFALL \$370,804/);
+  });
+  it('a small multi-chain gap against lagging third-party figures is inconclusive, not red; Tempo alone exceeding stays red', () => {
+    const issuer = parseIssuerReport('x', { ...PATH_USD, total_onchain_amount: '100000000.00', total_reserve_amount: '100200000.00' });
+    const checks = runChecks({ ...base, tempoSupply: 60000000000000n, otherChains: [{ chain: 'Base', usd: 40800000 }], issuer, issuerAgeSeconds: 600 });
+    expect(checks.find((x) => x.id === 'supply_matches_chain')!.ok).toBeNull();
+    expect(checks.find((x) => x.id === 'reserves_cover_chain')!.ok).toBeNull();
+    expect(checks.find((x) => x.id === 'reserves_cover_chain')!.detail).toMatch(/inconclusive/);
   });
   it('supply vs chain: chain > issuer is red; issuer > chain with no other legs is grey; stale feed is red; no issuer is grey', () => {
     // Issuer reports LESS than is on Tempo → more exists than reported → red.

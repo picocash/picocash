@@ -80,21 +80,30 @@ export function runChecks(t: TokenFacts): Check[] {
 
   // 2. What the issuer says is outstanding vs what the chains we can see say exists.
   //    The issuer's total spans every chain the coin is on; we see Tempo directly and
-  //    other chains only through DefiLlama. So:
-  //      chain  >  issuer (beyond tolerance)  → RED: more exists than the issuer admits
-  //      chain  ≈  issuer                      → green (exact to the micro-unit, or within tolerance)
-  //      chain  <  issuer, no other legs seen  → GREY: the remainder lives on chains we cannot observe
+  //    other chains only through DefiLlama. Tempo is stated first — it is the figure
+  //    we read ourselves — and the cross-chain sum second, as the reconciliation. So:
+  //      Tempo alone > issuer                   → RED: more exists on Tempo than the issuer admits anywhere
+  //      chain  >  issuer (beyond tolerance)    → RED: more exists than the issuer admits
+  //      chain  ≈  issuer                       → green (exact to the micro-unit, or within tolerance)
+  //      chain  <  issuer, no other legs seen   → GREY: the remainder lives on chains we cannot observe
   //      chain  <  issuer, other legs seen      → RED: the legs we can see do not add up
   if (t.issuer) {
     const gap = allChains - t.issuer.reportedSupply; // >0 means chain holds more than issuer reports
     const tol = within(allChains, t.issuer.reportedSupply, 10n);
     const exact = gap === 0n;
-    const seen = multiChain ? `Tempo ${USD(t.tempoSupply)} + ${t.otherChains.map((c) => `${c.chain} $${Math.round(c.usd).toLocaleString('en-US')}`).join(' + ')} = ${USD(allChains)}` : `Tempo ${USD(t.tempoSupply)}`;
+    const tempoShare = pct(t.tempoSupply, t.issuer.reportedSupply);
     let ok: boolean | null;
     let verdict: string;
-    if (tol) {
+    if (t.tempoSupply > t.issuer.reportedSupply && !within(t.tempoSupply, t.issuer.reportedSupply, 1n)) {
+      ok = false;
+      verdict = `Tempo alone EXCEEDS the issuer's total by ${USD(t.tempoSupply - t.issuer.reportedSupply)} — more exists on Tempo than is reported anywhere`;
+    } else if (tol) {
       ok = true;
       verdict = exact ? 'equal to the micro-unit' : `within tolerance (gap ${USD(abs(gap))}, ${pct(abs(gap), t.issuer.reportedSupply)})`;
+    } else if (multiChain && within(allChains, t.issuer.reportedSupply, 200n)) {
+      // Other-chain figures are third-party (DefiLlama) and lag issuer mints and burns; a gap this small cannot support a public accusation.
+      ok = null;
+      verdict = `inconclusive: a ${pct(abs(gap), t.issuer.reportedSupply)} gap (${USD(abs(gap))}) against third-party other-chain figures, which lag issuer mints and burns`;
     } else if (gap > 0n) {
       ok = false;
       verdict = `on-chain EXCEEDS the issuer's figure by ${USD(gap)} — more exists than is reported`;
@@ -108,28 +117,40 @@ export function runChecks(t: TokenFacts): Check[] {
       ok = false;
       verdict = `the chains we can see hold ${USD(abs(gap))} less than the issuer reports (${pct(abs(gap), t.issuer.reportedSupply)})`;
     }
+    const detail = multiChain
+      ? `Tempo ${USD(t.tempoSupply)} is ${tempoShare} of the issuer's ${USD(t.issuer.reportedSupply)} (all chains). Across all chains: Tempo + ${t.otherChains.map((c) => `${c.chain} $${Math.round(c.usd).toLocaleString('en-US')}`).join(' + ')} = ${USD(allChains)} vs issuer → ${verdict}`
+      : `Tempo ${USD(t.tempoSupply)} vs issuer ${USD(t.issuer.reportedSupply)} → ${verdict}`;
     checks.push({
       id: 'supply_matches_chain',
-      label: multiChain ? 'Issuer-reported supply matches on-chain supply across all chains' : 'Issuer-reported supply matches Tempo on-chain supply',
+      label: multiChain ? 'Issuer-reported supply accounts for Tempo on-chain supply (reconciled across all chains)' : 'Issuer-reported supply matches Tempo on-chain supply',
       ok,
-      detail: `${seen} vs issuer ${USD(t.issuer.reportedSupply)} → ${verdict}`,
+      detail,
     });
   } else {
     checks.push({ id: 'supply_matches_chain', label: 'Issuer-reported supply matches on-chain supply', ok: null, detail: 'no issuer figure to compare' });
   }
 
-  // 3. Reserves cover what is actually on the chains we can see.
+  // 3. Reserves cover what is on Tempo — stated first — and, for multi-chain coins,
+  //    what is on every chain we can see; the latter decides the verdict.
   if (t.issuer) {
     if (t.tempoSupply === 0n && !multiChain) {
       checks.push({ id: 'reserves_cover_chain', label: 'Issuer-reported reserves ≥ on-chain supply', ok: null, detail: 'no supply on Tempo to cover' });
     } else {
-      const c = covers(t.issuer.reportedReserves, allChains);
-      const diff = t.issuer.reportedReserves - allChains;
+      const describe = (supply: bigint) => {
+        const c = covers(t.issuer!.reportedReserves, supply);
+        const diff = t.issuer!.reportedReserves - supply;
+        return { ok: c.ok, text: c.rounding ? `covered within cent rounding (difference ${USD(abs(diff))})` : diff >= 0n ? `covered, surplus ${USD(diff)}` : `UNDER-BACKED by ${USD(abs(diff))}` };
+      };
+      const tempo = describe(t.tempoSupply);
+      const all = describe(allChains);
       checks.push({
         id: 'reserves_cover_chain',
-        label: multiChain ? 'Issuer-reported reserves ≥ on-chain supply (all chains)' : 'Issuer-reported reserves ≥ Tempo on-chain supply',
-        ok: c.ok,
-        detail: `${USD(t.issuer.reportedReserves)} vs ${USD(allChains)} on-chain → ${c.rounding ? `covered within cent rounding (difference ${USD(abs(diff))})` : diff >= 0n ? `covered, surplus ${USD(diff)}` : `UNDER-BACKED by ${USD(abs(diff))}`}`,
+        label: multiChain ? 'Issuer-reported reserves ≥ Tempo on-chain supply (and all chains together)' : 'Issuer-reported reserves ≥ Tempo on-chain supply',
+        // Tempo is read directly; the all-chain sum leans on lagging third-party data, so a small shortfall there is inconclusive, not a finding.
+        ok: !all.ok && tempo.ok && multiChain && within(allChains, t.issuer.reportedReserves, 200n) ? null : all.ok,
+        detail: multiChain
+          ? `${USD(t.issuer.reportedReserves)} reserves vs ${USD(t.tempoSupply)} on Tempo → ${tempo.text}. Across all chains ${USD(allChains)} → ${!all.ok && tempo.ok && within(allChains, t.issuer.reportedReserves, 200n) ? `inconclusive: ${USD(allChains - t.issuer.reportedReserves)} over reserves using third-party other-chain figures, which lag issuer mints and burns` : all.text}`
+          : `${USD(t.issuer.reportedReserves)} vs ${USD(t.tempoSupply)} on Tempo → ${tempo.text}`,
       });
     }
   } else {

@@ -77,7 +77,7 @@ header{display:flex;flex-direction:column;gap:8px}
 <p class="err" id="errors" hidden></p>
 </section>
 <footer class="foot">
-<p><strong>How to read it.</strong> <em>On-chain supply</em> is <span class="mono">totalSupply()</span> read directly from each TIP-20 contract on Tempo. <em>Issuer reserves</em> and <em>issuer supply</em> are the issuer's own figures from Bridge's public transparency feed, which Bridge describes as not an independent attestation; this page is the independent comparison. For coins that also live on other chains, those legs come from DefiLlama so the issuer's single total can be reconciled against all chains together. Flows are a recent sample window extrapolated to a day.</p>
+<p><strong>How to read it.</strong> <em>On-chain supply</em> is <span class="mono">totalSupply()</span> read directly from each TIP-20 contract on Tempo. <em>Issuer reserves</em> and <em>issuer supply</em> are the issuer's own figures from Bridge's public transparency feed, which Bridge describes as not an independent attestation; this page is the independent comparison. Tempo figures always come first. For coins that also live on other chains, the issuer's single total spans all of them, so the other legs (from DefiLlama, updated daily) are added as a second step to reconcile that total. Flows are a recent sample window extrapolated to a day.</p>
 <p>Grey means we have no public attestation source for that token — not that something is wrong. Red states the gap in dollars. Checks tolerate 0.01% on single-chain comparisons and 0.1% across chains.</p>
 <p>JSON: <a href="/v1/tokens">/v1/tokens</a> · <a href="/v1/history/0x20c0000000000000000000000000000000000000">/v1/history/:address</a> · Source: picocash. Not financial advice; a monitor, not a guarantee.</p>
 </footer>
@@ -142,7 +142,7 @@ header{display:flex;flex-direction:column;gap:8px}
       const flows = t.flows ? (() => { const perDay = (x) => BigInt(x) * 86400n / BigInt(Math.max(1, t.flows.seconds)); const memoPct = t.flows.transfers ? Math.round(100 * t.flows.memoTransfers / t.flows.transfers) : 0; return el('div', { class: 'num' }, compact(perDay(t.flows.transferVolume).toString()) + '/day', el('small', {}, Math.round(t.flows.transfers * 86400 / Math.max(1, t.flows.seconds)).toLocaleString('en-US') + ' transfers/day · ' + memoPct + '% with memo')); })() : el('div', { class: 'num muted' }, '—', el('small', {}, sup > 0n ? 'below flow-sampling floor' : 'no supply'));
       const summary = el('summary', {},
         el('div', { class: 'sym' }, el('b', {}, t.symbol || '(no symbol)'), el('small', {}, (t.name || '') + (t.currency ? ' · ' + t.currency : '')), el('div', { class: 'why' }, ...t.tracked.map((r) => el('span', { class: r }, r === 'collision' ? 'look-alike' : r)))),
-        el('div', { class: 'num' }, money(t.tempoSupply, t.decimals), el('small', {}, 'on-chain supply (Tempo)' + (t.otherChains.length ? ' + ' + t.otherChains.length + ' other chain' + (t.otherChains.length > 1 ? 's' : '') : ''))),
+        el('div', { class: 'num' }, money(t.tempoSupply, t.decimals), el('small', {}, 'on-chain supply, Tempo' + (t.issuer && t.otherChains.length ? ' · ' + (Number(BigInt(t.tempoSupply) * 10000n / BigInt(t.issuer.reportedSupply)) / 100).toFixed(1) + '% of issuer total' : ''))),
         issuerCell,
         flows,
         el('span', { class: 'chip ' + t.status }, t.status === 'ok' ? 'reconciled' : t.status === 'attention' ? 'attention' : 'unattested'),
@@ -153,8 +153,9 @@ header{display:flex;flex-direction:column;gap:8px}
         el('dt', {}, 'created'), el('dd', {}, t.createdBlock ? 'block ' + t.createdBlock.toLocaleString('en-US') : '—'),
         el('dt', {}, 'supply cap'), el('dd', {}, BigInt(t.supplyCap) >= 2n ** 120n ? 'unlimited (default)' : money(t.supplyCap, t.decimals)),
         el('dt', {}, 'transfer policy'), el('dd', {}, '#' + t.transferPolicyId + (t.paused ? ' · PAUSED' : '')),
-        ...(t.otherChains.length ? [el('dt', {}, 'other chains'), el('dd', {}, t.otherChains.map((c) => c.chain + ' $' + Math.round(c.usd).toLocaleString('en-US')).join(' · '))] : []),
-        ...(t.issuer ? [el('dt', {}, 'issuer feed'), el('dd', {}, el('a', { href: 'https://transparency.bridge.xyz/v0/stablecoins/' + t.issuer.slug, target: '_blank', rel: 'noopener' }, 'bridge / ' + t.issuer.slug)), el('dt', {}, 'issuer supply'), el('dd', {}, money(t.issuer.reportedSupply) + ' (all chains)'), el('dt', {}, 'breakdown'), el('dd', {}, t.issuer.breakdown.map((b) => b.type + ' ' + money(b.amount)).join(' · '))] : []),
+        el('dt', {}, 'Tempo supply'), el('dd', {}, money(t.tempoSupply, t.decimals) + ' (read from the contract)'),
+        ...(t.issuer ? [el('dt', {}, 'issuer feed'), el('dd', {}, el('a', { href: 'https://transparency.bridge.xyz/v0/stablecoins/' + t.issuer.slug, target: '_blank', rel: 'noopener' }, 'bridge / ' + t.issuer.slug)), el('dt', {}, 'issuer supply'), el('dd', {}, money(t.issuer.reportedSupply) + (t.otherChains.length ? ' (all chains)' : '')), el('dt', {}, 'breakdown'), el('dd', {}, t.issuer.breakdown.map((b) => b.type + ' ' + money(b.amount)).join(' · '))] : []),
+        ...(t.otherChains.length ? [el('dt', {}, 'other chains'), el('dd', {}, t.otherChains.map((c) => c.chain + ' $' + Math.round(c.usd).toLocaleString('en-US')).join(' · ') + ' (DefiLlama, daily)')] : []),
         ...(t.flows ? [el('dt', {}, 'minted / burned'), el('dd', {}, money(t.flows.minted) + ' / ' + money(t.flows.burned) + ' in sample (' + (t.flows.seconds / 3600).toFixed(1) + ' h)')] : []),
       );
       const sparkHolder = el('div', {}, el('small', { class: 'muted' }, '90-day history — supply (solid) vs issuer reserves (dashed)'), el('div', { class: 'sparkslot' }));
