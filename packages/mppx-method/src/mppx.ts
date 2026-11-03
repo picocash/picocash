@@ -45,8 +45,14 @@ export const picocashMethod = Method.from({
       /** TIP-20 token address backing the accepted proofs. */
       currency: z.string(),
       methodDetails: z.object({
-        /** Chain id of the network the backing token lives on. */
-        chainId: z.number(),
+        /** Chain id of the network the backing token lives on (tip20 units). */
+        chainId: z.optional(z.number()),
+        /**
+         * Explicit mint unit, for units that are not a TIP-20 token, e.g. closed-loop
+         * credit `credit:<issuer>:usd` (then `currency` is the ISO code, "USD"). When
+         * absent the unit is derived from chainId + currency as before.
+         */
+        unit: z.optional(z.string()),
         /** 32-byte hex; PC-BIND secrets commit to it. Injected per-challenge by the `request` hook. */
         nonce: z.string(),
         mints: z.array(z.object({ url: z.string(), keysetIds: z.array(z.string()) })),
@@ -67,8 +73,13 @@ export const picocashMethod = Method.from({
 
 type MppxChallenge = Challenge.Challenge<z.output<(typeof picocashMethod)['schema']['request']>, 'charge', 'picocash'>;
 
-/** Unit derivation per draft-picocash-charge-00 §6.1.1. */
-export function unitOf(chainId: number, currency: string): string {
+/** Unit derivation per draft-picocash-charge-00 §6.1.1, plus the explicit-unit extension. */
+export function unitOf(chainId: number | undefined, currency: string, unit?: string): string {
+  if (unit !== undefined) {
+    if (unit.startsWith('tip20:')) throw new Error('a tip20 unit is derived from chainId + currency, not sent explicitly');
+    return unit;
+  }
+  if (chainId === undefined) throw new Error('picocash challenge carries neither chainId nor unit');
   return `tip20:${chainId}:${currency.toLowerCase()}`;
 }
 
@@ -80,7 +91,7 @@ function toPicocashChallenge(challenge: MppxChallenge): PicocashChallenge {
     challenge_id: challenge.id,
     nonce: details.nonce,
     amount: Number(challenge.request.amount),
-    unit: unitOf(details.chainId, challenge.request.currency),
+    unit: unitOf(details.chainId, challenge.request.currency, details.unit),
     mints: details.mints.map((m) => ({ url: m.url, keyset_ids: m.keysetIds })),
     ...(details.pubkey !== undefined ? { pubkey: details.pubkey } : {}),
     // mppx enforces expiry itself (HMAC-bound `expires`); mirror it for the acceptor.
@@ -198,8 +209,10 @@ export interface PicocashRouterChargeConfig {
   wallet: Wallet;
   /** TIP-20 token address backing accepted proofs (`currency` on the wire). */
   currency: string;
-  /** Chain id the backing token lives on (Tempo Moderato: 42431). */
-  chainId: number;
+  /** Chain id the backing token lives on (Tempo Moderato: 42431). Omit with `unit`. */
+  chainId?: number;
+  /** Explicit non-TIP-20 unit, e.g. `credit:a9n9:usd`; then `currency` is "USD". */
+  unit?: string;
   /** Mint allowlist advertised in every challenge. */
   mints: Array<{ url: string; keysetIds: string[] }>;
   /**
@@ -242,7 +255,8 @@ export function charge(config: PicocashRouterChargeConfig): Method.AnyServer {
     defaults: {
       currency: config.currency,
       methodDetails: {
-        chainId: config.chainId,
+        ...(config.chainId !== undefined ? { chainId: config.chainId } : {}),
+        ...(config.unit !== undefined ? { unit: config.unit } : {}),
         nonce: '', // placeholder; the request hook below replaces it per challenge
         mints: config.mints,
         ...(config.pubkey !== undefined ? { pubkey: config.pubkey } : {}),
