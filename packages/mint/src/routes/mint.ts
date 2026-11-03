@@ -34,7 +34,9 @@ function quoteResponse(ctx: MintContext, row: QuoteRow) {
             memo: `0x${row.id}`,
             note: 'call transferWithMemo(to, amount, memo) on the token contract; the memo binds the deposit to this quote',
           }
-        : {
+        : ctx.config.credit
+          ? { method: 'credit', issuer: ctx.config.credit.issuer, note: `only ${ctx.config.credit.issuer} can fund this quote (POST /v1/credit/issue); credit cannot be bought by deposit` }
+          : {
             method: 'fake-vault',
             memo: `0x${row.id}`,
             note: 'fake vault: POST /dev/deposit {"quote_id","amount"} to simulate the on-chain deposit',

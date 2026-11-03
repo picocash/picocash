@@ -18,7 +18,11 @@ export type ErrorCode =
   | 'RELAY_DISABLED'
   | 'RELAY_NOT_FOUND'
   | 'PAYLOAD_TOO_LARGE'
-  | 'NOT_IMPLEMENTED';
+  | 'NOT_IMPLEMENTED'
+  | 'UNAUTHORIZED'
+  | 'REF_ALREADY_ISSUED'
+  | 'QUOTE_NOT_OPEN'
+  | 'QUOTE_ALREADY_FUNDED';
 
 /** Every API error carries a mandatory `recovery` hint for the calling agent. */
 export class ApiError extends Error {

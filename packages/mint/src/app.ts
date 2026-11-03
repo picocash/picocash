@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { creditRoutes, totalIssued } from './vault-credit.js';
 import { cors } from 'hono/cors';
 import { z } from 'zod';
 import type { MintContext } from './context.js';
@@ -11,6 +12,13 @@ import { statusRoutes } from './routes/status.js';
 import { swapRoutes } from './routes/swap.js';
 import { computeOutstanding } from './solvency.js';
 import { amountSchema, checkstateRequestSchema, parseBody } from './validation.js';
+
+const creditInfo = (issuer: string) => ({
+  method: 'credit',
+  issuer,
+  redeemable_for_cash: false,
+  note: `closed-loop credit: ${issuer} issues it (e.g. from settled card payments) and accepts it for its own services; there is no deposit and no melt`,
+});
 
 export function buildApp(ctx: MintContext): Hono {
   const app = new Hono();
@@ -50,9 +58,13 @@ export function buildApp(ctx: MintContext): Hono {
       vault:
         ctx.config.vault === 'tempo' && ctx.config.tempo
           ? { method: 'tempo', chain_id: ctx.config.tempo.chainId, token: ctx.config.tempo.tokenAddress, deposit_address: ctx.config.tempo.depositAddress }
-          : 'fake',
+          : ctx.config.credit
+            ? creditInfo(ctx.config.credit.issuer)
+            : 'fake',
       contact: { security: 'security@picocash.dev' },
-      status: 'pre-alpha technology demonstration — do not use with real funds',
+      status: ctx.config.credit
+        ? `closed-loop service credit issued by ${ctx.config.credit.issuer}; spendable only at ${ctx.config.credit.issuer} services, never redeemable for cash`
+        : 'pre-alpha technology demonstration — do not use with real funds',
     }),
   );
 
@@ -75,7 +87,8 @@ export function buildApp(ctx: MintContext): Hono {
       keyset_id: ctx.keyset.id,
       unit: ctx.keyset.unit,
       outstanding,
-      vault: ctx.config.tempo ? { chain_id: ctx.config.tempo.chainId, address: ctx.config.tempo.depositAddress, token: ctx.config.tempo.tokenAddress } : 'fake',
+      ...(ctx.config.credit ? { issued: await totalIssued(ctx.db), spent_at_issuer: (await totalIssued(ctx.db)) - outstanding } : {}),
+      vault: ctx.config.tempo ? { chain_id: ctx.config.tempo.chainId, address: ctx.config.tempo.depositAddress, token: ctx.config.tempo.tokenAddress } : ctx.config.credit ? creditInfo(ctx.config.credit.issuer) : 'fake',
     });
   });
 
@@ -91,6 +104,7 @@ export function buildApp(ctx: MintContext): Hono {
   });
 
   app.route('/v1/melt', meltRoutes(ctx));
+  if (ctx.config.credit) app.route('/v1/credit', creditRoutes(ctx));
   app.route('/', relayRoutes(ctx));
   app.route('/', statusRoutes(ctx));
 

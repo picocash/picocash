@@ -19,9 +19,11 @@ export interface MintConfig {
   seed: Uint8Array;
   port: number;
   databaseUrl: string | undefined;
-  vault: 'fake' | 'tempo';
+  vault: 'fake' | 'tempo' | 'credit';
   fakeVault: boolean;
   tempo?: TempoConfig;
+  /** Closed-loop service credit (vault 'credit'): no on-chain custody, issued only by the issuer. */
+  credit?: CreditConfig;
   /** Max amount per mint quote, base units. */
   maxMintAmount: number;
   /** Global outstanding-supply cap, base units; 0 = uncapped. Reference mints MUST set this. */
@@ -32,6 +34,23 @@ export interface MintConfig {
   /** PIP-07 token-link relay (optional capability). */
   relay: { enabled: boolean; maxBytes: number; ttlSeconds: number; uiUrl: string | undefined };
   quoteTtlSeconds: number;
+}
+
+/**
+ * A closed-loop credit mint issues eCash that only its issuer's services accept.
+ * Nothing is deposited: the issuer creates credit (e.g. a customer's card payment,
+ * after the platform share, released after the refund hold) by calling
+ * POST /v1/credit/issue with issueToken. There is no melt: credit is never
+ * redeemable for cash. It is a prepaid service liability on the issuer's books.
+ */
+export interface CreditConfig {
+  issuer: string;
+  issueToken: string;
+}
+
+/** Unit for closed-loop credit: micro-USD (6 decimals, same scale as pathUSD) owed in service by `issuer`. */
+export function creditUnit(issuer: string): string {
+  return `credit:${issuer}:usd`;
 }
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
@@ -70,8 +89,16 @@ function loadTempoConfig(env: NodeJS.ProcessEnv): TempoConfig {
   };
 }
 
+function loadCreditConfig(env: NodeJS.ProcessEnv): CreditConfig {
+  const issuer = env.PICOCASH_CREDIT_ISSUER ?? '';
+  if (!/^[a-z0-9][a-z0-9.-]{0,62}$/.test(issuer)) throw new Error('PICOCASH_CREDIT_ISSUER (lowercase name, e.g. a9n9) is required for PICOCASH_VAULT=credit');
+  const issueToken = env.PICOCASH_CREDIT_ISSUE_TOKEN ?? '';
+  if (issueToken.length < 32) throw new Error('PICOCASH_CREDIT_ISSUE_TOKEN (at least 32 chars) is required for PICOCASH_VAULT=credit');
+  return { issuer, issueToken };
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): MintConfig {
-  const vault = env.PICOCASH_VAULT === 'tempo' ? 'tempo' : 'fake';
+  const vault = env.PICOCASH_VAULT === 'tempo' ? 'tempo' : env.PICOCASH_VAULT === 'credit' ? 'credit' : 'fake';
   const fakeVault = vault === 'fake';
   let seed: Uint8Array;
   if (env.PICOCASH_MINT_SEED) {
@@ -86,15 +113,17 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): MintConfig {
     throw new Error('PICOCASH_MINT_SEED is required when not running against the fake vault');
   }
   const binding = parseTokenBinding(env);
+  const credit = vault === 'credit' ? loadCreditConfig(env) : undefined;
   return {
     name: env.PICOCASH_MINT_NAME ?? 'picocash dev mint',
-    unit: tip20Unit(binding.chainId, binding.tokenAddress),
+    unit: credit ? creditUnit(credit.issuer) : tip20Unit(binding.chainId, binding.tokenAddress),
     seed,
     port: Number(env.PORT ?? 3338),
     databaseUrl: env.DATABASE_URL,
     vault,
     fakeVault,
     ...(vault === 'tempo' ? { tempo: loadTempoConfig(env) } : {}),
+    ...(credit ? { credit } : {}),
     maxMintAmount: Number(env.PICOCASH_MAX_MINT_AMOUNT ?? 100_000_000), // $100
     maxOutstanding: Number(env.PICOCASH_MAX_OUTSTANDING ?? 0),
     meltFee: Number(env.PICOCASH_MELT_FEE ?? 10_000), // $0.01: ~2–20x observed payout gas on Moderato

@@ -6,11 +6,13 @@ import { deriveKeyset } from './keyset.js';
 import { FakePayout, TempoPayout, type PayoutExecutor } from './payout.js';
 import { TempoVault, verifyTokenBinding } from './vault-tempo.js';
 import { FakeVault, type DepositOracle } from './vault.js';
+import { CreditLedger } from './vault-credit.js';
 
 // Library surface: lets sibling packages (SDK, MPP method) spin an in-process
 // mint for their test suites without HTTP or a chain.
 export { buildApp } from './app.js';
-export { loadConfig, tip20Unit, type MintConfig } from './config.js';
+export { loadConfig, tip20Unit, creditUnit, type MintConfig, type CreditConfig } from './config.js';
+export { CreditLedger, creditRoutes } from './vault-credit.js';
 export { createPgDb, createPgliteDb, migrate, type Db } from './db.js';
 export { deriveKeyset, publicKeysJson, type Keyset } from './keyset.js';
 export { FakePayout, TempoPayout, type PayoutExecutor } from './payout.js';
@@ -41,6 +43,10 @@ export async function main(): Promise<void> {
     oracle = new TempoVault(tempo);
     payout = tempo.operatorKey ? new TempoPayout(tempo) : undefined;
     vaultLabel = `TEMPO chain ${tempo.chainId}, unit ${config.unit} (${token.symbol}, ${token.decimals} dec), vault ${tempo.depositAddress}, melt ${payout ? 'on' : 'OFF (no operator key)'}`;
+  } else if (config.vault === 'credit') {
+    oracle = new CreditLedger(db);
+    payout = undefined; // credit is never redeemable for cash: no melt
+    vaultLabel = `CREDIT issued by ${config.credit!.issuer}, unit ${config.unit}, melt OFF (closed loop)`;
   } else {
     fakeVault = new FakeVault();
     oracle = fakeVault;

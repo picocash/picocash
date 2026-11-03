@@ -73,6 +73,15 @@ CREATE TABLE IF NOT EXISTS blind_signatures (
   quote_id TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Closed-loop credit mode: one issuance per quote, one per issuer reference
+-- (e.g. the settlement release id), so a retried release can never mint twice.
+CREATE TABLE IF NOT EXISTS credit_issuances (
+  ref TEXT PRIMARY KEY,
+  quote_id TEXT NOT NULL UNIQUE,
+  amount BIGINT NOT NULL CHECK (amount > 0),
+  issued_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 export async function migrate(db: Db): Promise<void> {
