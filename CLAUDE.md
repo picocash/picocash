@@ -27,7 +27,7 @@ cd ~/source/picocash-contracts && forge test   # 38 tests; solc pinned 0.8.35, v
 
 Scripts in `packages/mint/scripts/`: `setup-testnet.ts` (fresh keys), `publish-solvency.ts` (attestation; cron every 10 min locally and on the Worker), `register-keyset.ts` (after any keyset change — emergency redemption needs it), `emergency-redeem.ts` (holder CLI), `testnet-e2e.ts`.
 
-Git identity is not configured globally here: `export GIT_AUTHOR_NAME=Arun GIT_AUTHOR_EMAIL=arun@flext.energy GIT_COMMITTER_NAME=Arun GIT_COMMITTER_EMAIL=arun@flext.energy` before committing. Commit and push only when asked. In multi-repo shell blocks, `cd` explicitly before every git command.
+Git identity is set per repository (`git config --local user.name/user.email`, done 2026-11-05 in every repo under `~/source`), not globally. Do not export `GIT_AUTHOR_EMAIL` or put the email in commands: the built-in privacy plugin prompts whenever a shell command contains the account email. Commit and push only when asked. In multi-repo shell blocks, `cd` explicitly before every git command.
 
 ## Live deployments (Tempo Moderato, chain 42431)
 
